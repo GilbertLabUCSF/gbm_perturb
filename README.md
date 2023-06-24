@@ -9,7 +9,9 @@ gbm-perturb uses [`renv`](https://rstudio.github.io/renv/articles/renv.html)
 to manage dependencies and install libraries. Note, however, that `renv` is not 
 always able to manage packages that have not been released to CRAN, 
 Bioconductor, or other distribution platforms. `renv` also cannot manage non-R
-packages, as it is run from within R.
+packages, as it is run from within R. If you're working from RStudio, you may
+need to modify your package discovery paths to include the path to `renv`'s
+library of packages.
 
 To get set up, first ensure that your working directory is the project directory.
 
