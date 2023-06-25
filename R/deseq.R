@@ -24,9 +24,9 @@ set.seed(5220)
 # Inputs:
 
 PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_integrated_20230619.Rds"
-EXP_CONTEXT = "iv"
-SORTED_IDENTITIES = c()
-OUTPUT_DIR = "/JJJJ/JJJ/JJ"
+EXP_CONTEXT = "invitro"
+SORTED_IDENTITIES = c("invitro")
+OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/GL261_integrated_20230625_invitro"
 SEED = 5220
 NORMALIZE_TO_NT_NORT = FALSE
 MINIMUM_COVERAGE = 5
@@ -37,33 +37,37 @@ MINIMUM_COVERAGE = 5
 
 data = readRDS(PATH_TO_SEURAT_OBJECT)
 
+# Isolate the data by context
+
+data.context = subset(data, source == EXP_CONTEXT)
+
+# Screen for sorted cells only (or other malignancy indicator)
+
+data.context = subset(data.context, sorted %in% SORTED_IDENTITIES)
+
+# Screen for cells part of a group with coverage of >= 5 cells
+# 
+sgRNACond_counts = table(data.context$sgRNACond)
+data.context = subset(data.context, sgRNACond %in% 
+                        names(sgRNACond_counts[sgRNACond_counts > 5]))
+
 # Isolate the data that we need for running DElegate
 
-cell_barcodes = colnames(data)
-guides = data$sgRNA
-radiation = data$cond
-origin = data$source
+cell_barcodes = colnames(data.context)
+guides = data.context$sgRNA
+radiation = data.context$cond
+origin = data.context$source
 sgRNA_metadata = data.frame(
   origin = origin,
   cell_barcode = cell_barcodes,
   radiation = radiation,
   guide = guides
 )
+perturbations.context = unique(subset(sgRNA_metadata, guide != "non-targeting" 
+                                      & guide != "non-targeting_B" & 
+                                        guide != "None" & guide != "NA")$guide)
 
-data.context = subset(data, source == EXP_CONTEXT)
-sgRNA_metadata.context = subset(sgRNAMetadata, origin == EXP_CONTEXT) 
-perturbations.context = unique(filter(sgRNA_metadata.context, Guide != "non-targeting", 
-                                   Guide != "non-targeting_B", Guide != "None")$Guide)
-
-# Screen for sorted cells only (or other malignancy indicator)
-
-data.context <- subset(data.context, orig.ident %in% SORTED_IDENTITIES)
-
-# Screen for coverage
-
-
-
-# Functions that help us to find differential genes
+# Define functions that help us to find differential genes
 
 find_deseq_differential_genes = function(data.obj, seed, group1, group2, group_column=NULL) {
   # Takes in a normalized Seurat object with metadata
@@ -76,7 +80,7 @@ find_deseq_differential_genes = function(data.obj, seed, group1, group2, group_c
   # Set futures to greater than max capacity; you may need to tweak this
   options(future.globals.maxSize = 5000 * 1024^2)
   
-  df <- findDE(object = data.obj, group_column = group_column,
+  df = findDE(object = data.obj, group_column = group_column,
                compare = c(group1, group2), method = 'deseq')
   return(df)
 }
@@ -92,20 +96,20 @@ build_filename = function(group1, group2) {
 
 df.nt = find_deseq_differential_genes(data.context, 5220, "non-targeting_RT", 
                                        "non-targeting_noRT", group_column = "sgRNACond")
-write.table(df.ced, build_filename("non-targeting_RT", "non-targeting_noRT"))
+write.table(df.nt, build_filename("non-targeting_RT", "non-targeting_noRT"))
 
 for (perturb in perturbations.context) {
   print(sprintf("Calculating diff genes for %s", perturb))
   for (cond in c("RT", "noRT")) {
     perturb_condition = paste(perturb, cond, sep = "_")
-    if (NORMALIZE_TO_NT_noRT) {
+    if (NORMALIZE_TO_NT_NORT) {
       nt_condition = paste("non-targeting", "noRT", sep = "_")
     } else {
-      nt_condition = paste("non-targeting", cond, sep = "_")
+      nt_condition = paste("non-targeting", cond, sep = "_") 
     }
     found = FALSE
     tryCatch({
-      df <- find_deseq_differential_genes(data.ced,
+      df = find_deseq_differential_genes(data.context,
                                           SEED,
                                           perturb_condition,
                                           nt_condition,

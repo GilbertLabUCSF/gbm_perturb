@@ -1690,7 +1690,7 @@
     },
     "spatstat.sparse": {
       "Package": "spatstat.sparse",
-      "Version": "3.0-1",
+      "Version": "3.0-2",
       "Source": "Repository",
       "Repository": "CRAN",
       "Requirements": [
@@ -1703,7 +1703,7 @@
         "tensor",
         "utils"
       ],
-      "Hash": "acafcd842d7388c6087a9bc41e8ee676"
+      "Hash": "82a7d5a77f165b08dae877ef98dc6fcc"
     },
     "spatstat.utils": {
       "Package": "spatstat.utils",
