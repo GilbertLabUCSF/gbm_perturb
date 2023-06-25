@@ -17,16 +17,19 @@
 
 library(Seurat)
 library(DElegate)
+library(dplyr)
 set.seed(5220)
 
 ##############################################################################
 ##############################################################################
 # Inputs:
 
-PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_integrated_20230619.Rds"
+PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/SB28_integrated_20230620.Rds"
 EXP_CONTEXT = "invitro"
-SORTED_IDENTITIES = c("invitro")
-OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/GL261_integrated_20230625_invitro"
+SORTED_IDENTITIES = c("sort")
+NT_GUIDES = c("non-targeting_A","non-targeting_B","non-targeting_C","non-targeting_D")
+IGNORE_GUIDES = c("NA_RT", "NA_noRT")
+OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_outputs/de_genes/SB28_integrated_202306025_invitro_condNormalized"
 SEED = 5220
 NORMALIZE_TO_NT_NORT = FALSE
 MINIMUM_COVERAGE = 5
@@ -46,10 +49,16 @@ data.context = subset(data, source == EXP_CONTEXT)
 data.context = subset(data.context, sorted %in% SORTED_IDENTITIES)
 
 # Screen for cells part of a group with coverage of >= 5 cells
-# 
+
 sgRNACond_counts = table(data.context$sgRNACond)
 data.context = subset(data.context, sgRNACond %in% 
                         names(sgRNACond_counts[sgRNACond_counts > 5]))
+
+# Get rid of all guides in the ignore category
+
+guides = unique(data.context$sgRNACond)
+guides <- guides[!(guides %in% IGNORE_GUIDES)]
+data.context = subset(data.context, sgRNACond %in% guides)
 
 # Isolate the data that we need for running DElegate
 
@@ -63,9 +72,7 @@ sgRNA_metadata = data.frame(
   radiation = radiation,
   guide = guides
 )
-perturbations.context = unique(subset(sgRNA_metadata, guide != "non-targeting" 
-                                      & guide != "non-targeting_B" & 
-                                        guide != "None" & guide != "NA")$guide)
+perturbations.context = unique(subset(sgRNA_metadata, !(guide %in% NT_GUIDES))$guide)
 
 # Define functions that help us to find differential genes
 
@@ -92,11 +99,29 @@ build_filename = function(group1, group2) {
   return(paste(directory, filename, extension, sep = ""))
 }
 
-# Find differential genes, starting with the non-targeting case
+# Find differential genes, starting with the non-targeting case(s)
 
-df.nt = find_deseq_differential_genes(data.context, 5220, "non-targeting_RT", 
-                                       "non-targeting_noRT", group_column = "sgRNACond")
-write.table(df.nt, build_filename("non-targeting_RT", "non-targeting_noRT"))
+for (guide in NT_GUIDES) {
+  RT = paste(guide, "RT", sep = "_")
+  noRT = paste(guide, "noRT", sep = "_")
+  found = FALSE
+  tryCatch({
+    df.nt = find_deseq_differential_genes(data.context, SEED, RT, 
+                                          noRT, group_column = "sgRNACond")
+    found = TRUE
+  }, error = function(err) {
+    print(paste("Failed to get model because of ", err, "in", guide))
+  })
+  if (found) {
+    write.table(df.nt, build_filename(RT, noRT))
+  }
+}
+
+# If there are multiple non-targeting perturbations, combine them into a single
+# non-targeting perturbation and analyze that.
+for (guide in NT_GUIDES) {
+  data.context$sgRNACond = gsub(guide, "non-targeting", data.context$sgRNACond)
+}
 
 for (perturb in perturbations.context) {
   print(sprintf("Calculating diff genes for %s", perturb))
