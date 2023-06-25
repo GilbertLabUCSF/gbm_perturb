@@ -46,7 +46,7 @@ data.context = subset(data, source == EXP_CONTEXT)
 
 # Screen for sorted cells only (or other malignancy indicator)
 
-data.context = subset(data.context, sorted %in% SORTED_IDENTITIES)
+# data.context = subset(data.context, sorted %in% SORTED_IDENTITIES)
 
 # Screen for cells part of a group with coverage of >= 5 cells
 
