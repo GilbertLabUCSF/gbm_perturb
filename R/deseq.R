@@ -24,15 +24,27 @@ set.seed(5220)
 ##############################################################################
 # Inputs:
 
-PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/SB28_integrated_20230620.Rds"
+PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_integrated_20230619.Rds"
 EXP_CONTEXT = "invitro"
-SORTED_IDENTITIES = c("sort")
-NT_GUIDES = c("non-targeting_A","non-targeting_B","non-targeting_C","non-targeting_D")
-IGNORE_GUIDES = c("NA_RT", "NA_noRT")
-OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_outputs/de_genes/SB28_integrated_202306025_invitro_condNormalized"
+SORTED_IDENTITIES = c("MACSFACS")
+SORTED_IDENTITES_ONLY = FALSE
+NT_GUIDES = c("non-targeting")
+IGNORE_GUIDES = c("NA_RT", "NA_noRT", "non-targeting_B_RT", "non-targeting_B_noRT")
+OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/GL261_integrated_20230626_invitro_condNormalized_all"
 SEED = 5220
 NORMALIZE_TO_NT_NORT = FALSE
 MINIMUM_COVERAGE = 5
+
+print(paste("PATH_TO_SEURAT_OBJECT =", PATH_TO_SEURAT_OBJECT))
+print(paste("EXP_CONTEXT =", EXP_CONTEXT))
+print(paste("SORTED_IDENTITIES =", toString(SORTED_IDENTITIES)))
+print(paste("SORTED_IDENTITES_ONLY =", SORTED_IDENTITES_ONLY))
+print(paste("NT_GUIDES =", toString(NT_GUIDES)))
+print(paste("IGNORE_GUIDES =", toString(IGNORE_GUIDES)))
+print(paste("OUTPUT_DIR =", OUTPUT_DIR))
+print(paste("SEED =", SEED))
+print(paste("NORMALIZE_TO_NT_NORT =", NORMALIZE_TO_NT_NORT))
+print(paste("MINIMUM_COVERAGE =", MINIMUM_COVERAGE))
 
 ##############################################################################
 ##############################################################################
@@ -46,7 +58,9 @@ data.context = subset(data, source == EXP_CONTEXT)
 
 # Screen for sorted cells only (or other malignancy indicator)
 
-# data.context = subset(data.context, sorted %in% SORTED_IDENTITIES)
+if (SORTED_IDENTITES_ONLY) {
+  data.context = subset(data.context, sorted %in% SORTED_IDENTITIES)
+}
 
 # Screen for cells part of a group with coverage of >= 5 cells
 
@@ -122,6 +136,9 @@ for (guide in NT_GUIDES) {
 for (guide in NT_GUIDES) {
   data.context$sgRNACond = gsub(guide, "non-targeting", data.context$sgRNACond)
 }
+df.nt_combined = find_deseq_differential_genes(data.context, SEED, "non-targeting_RT",
+                                               "non-targeting_noRT", group_column = "sgRNACond")
+write.table(df.nt_combined, build_filename("non-targeting_RT", "non-targeting_noRT"))
 
 for (perturb in perturbations.context) {
   print(sprintf("Calculating diff genes for %s", perturb))
@@ -150,3 +167,5 @@ for (perturb in perturbations.context) {
     }
   }
 }
+
+print("Finished running!")
