@@ -8,6 +8,9 @@
       }
     ]
   },
+  "Bioconductor": {
+    "Version": "3.17"
+  },
   "Packages": {
     "BH": {
       "Package": "BH",
@@ -15,6 +18,62 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "68122010f01c4dcfbe58ce7112f2433d"
+    },
+    "Biobase": {
+      "Package": "Biobase",
+      "Version": "2.60.0",
+      "Source": "Bioconductor",
+      "git_url": "https://git.bioconductor.org/packages/Biobase",
+      "git_branch": "RELEASE_3_17",
+      "git_last_commit": "8dc10d2",
+      "git_last_commit_date": "2023-04-25",
+      "Requirements": [
+        "BiocGenerics",
+        "R",
+        "methods",
+        "utils"
+      ],
+      "Hash": "ed269b250f5844d54dfdc7e749f901aa"
+    },
+    "BiocGenerics": {
+      "Package": "BiocGenerics",
+      "Version": "0.46.0",
+      "Source": "Bioconductor",
+      "git_url": "https://git.bioconductor.org/packages/BiocGenerics",
+      "git_branch": "RELEASE_3_17",
+      "git_last_commit": "a90f0c5",
+      "git_last_commit_date": "2023-04-25",
+      "Requirements": [
+        "R",
+        "graphics",
+        "methods",
+        "stats",
+        "utils"
+      ],
+      "Hash": "c179ae59955c36f5d0068ed29ce832f7"
+    },
+    "BiocManager": {
+      "Package": "BiocManager",
+      "Version": "1.30.21",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "utils"
+      ],
+      "Hash": "be203e7eea75514bc1a41c1de39a9bb9"
+    },
+    "BiocVersion": {
+      "Package": "BiocVersion",
+      "Version": "3.17.1",
+      "Source": "Bioconductor",
+      "git_url": "https://git.bioconductor.org/packages/BiocVersion",
+      "git_branch": "master",
+      "git_last_commit": "a2d0c4c",
+      "git_last_commit_date": "2022-11-02",
+      "Requirements": [
+        "R"
+      ],
+      "Hash": "f7c0d5521799b7b0d0a211143ed0bfcb"
     },
     "DElegate": {
       "Package": "DElegate",
@@ -87,6 +146,37 @@
         "utils"
       ],
       "Hash": "38082d362d317745fb932e13956dccbb"
+    },
+    "NMF": {
+      "Package": "NMF",
+      "Version": "0.26",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "Biobase",
+        "BiocManager",
+        "R",
+        "RColorBrewer",
+        "cluster",
+        "codetools",
+        "colorspace",
+        "digest",
+        "doParallel",
+        "foreach",
+        "ggplot2",
+        "grDevices",
+        "graphics",
+        "grid",
+        "gridBase",
+        "methods",
+        "registry",
+        "reshape2",
+        "rngtools",
+        "stats",
+        "stringr",
+        "utils"
+      ],
+      "Hash": "17294aa61048e32ed3d08070624ee26a"
     },
     "R6": {
       "Package": "R6",
@@ -525,6 +615,20 @@
       ],
       "Hash": "8b708f296afd9ae69f450f9640be8990"
     },
+    "doParallel": {
+      "Package": "doParallel",
+      "Version": "1.0.17",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "R",
+        "foreach",
+        "iterators",
+        "parallel",
+        "utils"
+      ],
+      "Hash": "451e5edf411987991ab6a5410c45011f"
+    },
     "dplyr": {
       "Package": "dplyr",
       "Version": "1.1.2",
@@ -635,6 +739,19 @@
         "rlang"
       ],
       "Hash": "1e22b8cabbad1eae951a75e9f8b52378"
+    },
+    "foreach": {
+      "Package": "foreach",
+      "Version": "1.5.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "R",
+        "codetools",
+        "iterators",
+        "utils"
+      ],
+      "Hash": "618609b42c9406731ead03adf5379850"
     },
     "fs": {
       "Package": "fs",
@@ -789,6 +906,18 @@
         "stats"
       ],
       "Hash": "75437dd4c43599f6e9418ea249495fda"
+    },
+    "gridBase": {
+      "Package": "gridBase",
+      "Version": "0.4-7",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "R",
+        "graphics",
+        "grid"
+      ],
+      "Hash": "c6b1256546a22b4b9f4fae3ba5117b97"
     },
     "gridExtra": {
       "Package": "gridExtra",
@@ -965,6 +1094,17 @@
         "utils"
       ],
       "Hash": "0080607b4a1a7b28979aecef976d8bc2"
+    },
+    "iterators": {
+      "Package": "iterators",
+      "Version": "1.0.14",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "R",
+        "utils"
+      ],
+      "Hash": "8954069286b4b2b0d023d1b288dce978"
     },
     "jquerylib": {
       "Package": "jquerylib",
@@ -1384,6 +1524,17 @@
       ],
       "Hash": "5e3c5dc0b071b21fa128676560dbe94d"
     },
+    "registry": {
+      "Package": "registry",
+      "Version": "0.5-1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "R",
+        "utils"
+      ],
+      "Hash": "1c9935f4f14c6c096c9c9072ddee59f1"
+    },
     "renv": {
       "Package": "renv",
       "Version": "0.17.3",
@@ -1463,6 +1614,21 @@
         "yaml"
       ],
       "Hash": "75a01be060d800ceb14e32c666cacac9"
+    },
+    "rngtools": {
+      "Package": "rngtools",
+      "Version": "1.5.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "R",
+        "digest",
+        "methods",
+        "parallel",
+        "stats",
+        "utils"
+      ],
+      "Hash": "367a915f939520767660671efa0e32bd"
     },
     "rprojroot": {
       "Package": "rprojroot",
