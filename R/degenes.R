@@ -23,8 +23,8 @@ set.seed(5220)
 ##############################################################################
 # Inputs:
 
-INPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230626_invitro_condNormalized_all"
-OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/GL261_integrated_20230626_invitro_condNormalized"
+INPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230626_ced_condNormalized_sorted"
+OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/GL261_integrated_20230626_ced_condNormalized_sorted"
 NT_COLS = c("CED_non-targeting_RT_non-targeting_noRT")
 EXPR_CUTOFF = 0.5
 ABS_CUTOFF = 0.01
@@ -47,9 +47,9 @@ for (i in file_names) {
 
 # Filter for only noRT perturbations - this is for analysis development
 
-df.names = names(data.list)
-matched.names = df.names[grep("non-targeting_noRT", df.names)]
-data.list = data.list[matched.names]
+# df.names = names(data.list)
+# matched.names = df.names[grep("non-targeting_noRT", df.names)]
+# data.list = data.list[matched.names]
 
 # Filter the dataframes. We apply a 1% cutoff to both the up- and down-regulated
 # directions, remove all genes with no log fold changes measured, and admit
@@ -114,8 +114,8 @@ deMat[is.na(deMat)] <- 0
 deMat <- deMat[, !colnames(deMat) %in% NT_COLS]
 deMatsig <- deMat[intersect(deGenesAll.topBot,row.names(deMat)),]
 
-write.table(deMat, paste(OUTPUT_DIR, "/deMat_noRTOnly_topBot", TOP_BOT_CUTOFF, ".txt", sep = ""))
-write.table(deMatsig, paste(OUTPUT_DIR, "/deMatSig_noRTOnly_topBot", TOP_BOT_CUTOFF, ".txt", sep = ""))
+write.table(deMat, paste(OUTPUT_DIR, "/deMat_topBot", TOP_BOT_CUTOFF, ".txt", sep = ""))
+write.table(deMatsig, paste(OUTPUT_DIR, "/deMatSig_topBot", TOP_BOT_CUTOFF, ".txt", sep = ""))
 
 deMat <- ldply(lapply(data.list,function(x) x[,c("feature","log_fc")]),data.frame)
 deMat <- reshape(deMat, idvar = "feature", v.names = "log_fc",timevar = ".id", direction = "wide")
@@ -127,5 +127,5 @@ deMat[is.na(deMat)] <- 0
 deMat <- deMat[, !colnames(deMat) %in% NT_COLS]
 deMatsig <- deMat[intersect(deGenesAll.abs,row.names(deMat)),]
 
-write.table(deMat, paste(OUTPUT_DIR, "/deMat_noRTOnly_abs", ABS_CUTOFF, ".txt", sep = ""))
-write.table(deMatsig, paste(OUTPUT_DIR, "/deMatSig_noRTOnly_abs", ABS_CUTOFF, ".txt", sep = ""))
+write.table(deMat, paste(OUTPUT_DIR, "/deMat_abs", ABS_CUTOFF, ".txt", sep = ""))
+write.table(deMatsig, paste(OUTPUT_DIR, "/deMatSig_abs", ABS_CUTOFF, ".txt", sep = ""))
