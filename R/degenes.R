@@ -23,8 +23,8 @@ set.seed(5220)
 ##############################################################################
 # Inputs:
 
-INPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230626_ced_condNormalized_sorted"
-OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/GL261_integrated_20230626_ced_condNormalized_sorted"
+INPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_ced_noRTNormalized_all"
+OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/GL261_integrated_20230712_ced_noRTNormalized_all"
 NT_COLS = c("CED_non-targeting_RT_non-targeting_noRT")
 EXPR_CUTOFF = 0.5
 ABS_CUTOFF = 0.01
@@ -57,13 +57,19 @@ for (i in file_names) {
 
 deGenesAll.topBot = unique(unlist(lapply(data.list, function(x) {
   x = x[!is.na(x$log_fc), ]
+  x = x[!is.na(x$pvalue), ]
+  x = x[!is.na(x$padj), ]
   
-  n = nrow(x)
-  cutoff_n = round(n * EXPR_CUTOFF)
-  x = x[order(x$ave_expr),]
-  x = tail(x, cutoff_n)
-  print(paste("Minimum ave_expr of allowed genes: ", min(x$ave_expr)))
-  
+  # n = nrow(x)
+  # cutoff_n = round(n * EXPR_CUTOFF)
+  # x = x[order(x$ave_expr),]
+  # x = tail(x, cutoff_n)
+  # print(paste("Minimum ave_expr of allowed genes: ", min(x$ave_expr)))
+
+  # Implement p/absolute-value threshold
+  x$threshold_p = abs(x$log_fc) * -log10(x$pvalue)
+  x$threshold_adjp = abs(x$log_fc) * -log10(x$padj)
+
   n = nrow(x)
   cutoff_n = round(n * TOP_BOT_CUTOFF)
   x = x[order(x$log_fc),]
@@ -102,6 +108,18 @@ deGenesAll.abs = unique(unlist(lapply(data.list, function(x) {
   # c(x$feature)
 })))
 
+# Filter the dataframes based on p-value and absolute value change
+
+deGenesAll.padj = unique(unlist(lapply(data.list, function(x) {
+  x = x[!is.na(x$log_fc), ]
+  x = x[!is.na(x$pvalue), ]
+  x = x[!is.na(x$padj), ]
+  x = x[x$padj < 0.05, ]
+  x = x[abs(x$log_fc) > 0.1, ]
+  x$feature
+})))
+
+
 # Build log2FC matrices for both the topBot and Abs case
 
 deMat <- ldply(lapply(data.list,function(x) x[,c("feature","log_fc")]),data.frame)
@@ -129,3 +147,16 @@ deMatsig <- deMat[intersect(deGenesAll.abs,row.names(deMat)),]
 
 write.table(deMat, paste(OUTPUT_DIR, "/deMat_abs", ABS_CUTOFF, ".txt", sep = ""))
 write.table(deMatsig, paste(OUTPUT_DIR, "/deMatSig_abs", ABS_CUTOFF, ".txt", sep = ""))
+
+deMat <- ldply(lapply(data.list,function(x) x[,c("feature","log_fc")]),data.frame)
+deMat <- reshape(deMat, idvar = "feature", v.names = "log_fc",timevar = ".id", direction = "wide")
+deMat <- deMat[!is.na(deMat$feature),]
+row.names(deMat) <- deMat$feature
+colnames(deMat) <- gsub("log_fc.","",colnames(deMat))
+deMat <- deMat[,-1]
+deMat[is.na(deMat)] <- 0
+deMat <- deMat[, !colnames(deMat) %in% NT_COLS]
+deMatsig <- deMat[intersect(deGenesAll.padj,row.names(deMat)),]
+
+write.table(deMat, paste(OUTPUT_DIR, "/deMat_adjp05_lfc01", ".txt", sep = ""))
+write.table(deMatsig, paste(OUTPUT_DIR, "/deMatSig_adjp05_lfc01", ".txt", sep = ""))

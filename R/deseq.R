@@ -25,14 +25,14 @@ set.seed(5220)
 # Inputs:
 
 PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_integrated_20230619.Rds"
-EXP_CONTEXT = "invitro"
+EXP_CONTEXT = "CED"
 SORTED_IDENTITIES = c("MACSFACS")
 SORTED_IDENTITES_ONLY = FALSE
 NT_GUIDES = c("non-targeting")
 IGNORE_GUIDES = c("NA_RT", "NA_noRT", "non-targeting_B_RT", "non-targeting_B_noRT")
-OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/GL261_integrated_20230626_invitro_condNormalized_all"
+OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_ced_noRTNormalized_all"
 SEED = 5220
-NORMALIZE_TO_NT_NORT = FALSE
+NORMALIZE_TO_NT_NORT = TRUE
 MINIMUM_COVERAGE = 5
 
 print(paste("PATH_TO_SEURAT_OBJECT =", PATH_TO_SEURAT_OBJECT))
@@ -62,7 +62,7 @@ if (SORTED_IDENTITES_ONLY) {
   data.context = subset(data.context, sorted %in% SORTED_IDENTITIES)
 }
 
-# Screen for cells part of a group with coverage of >= 5 cells
+# Screen for cells part of a group with coverage of > 5 cells
 
 sgRNACond_counts = table(data.context$sgRNACond)
 data.context = subset(data.context, sgRNACond %in% 

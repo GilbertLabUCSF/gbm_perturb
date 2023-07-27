@@ -18,44 +18,36 @@ library(enrichR)
 library(ComplexHeatmap)
 library(colorRamp2)
 library(ggplot2)
-library(viridis)
 set.seed(NULL)
 
 ##############################################################################
 ##############################################################################
 # Inputs:
 
-PATH_TO_DE_GENES = "/raleighlab/data1/liuj/gbm_perturb/analysis/gbm_pdx_perturb_GL261_integrate_xfp/GL261_integrated_20230626_noRT_all/GL261_integrated_20230626_noRT_all_deMatSig_padj05_abs0.1.txt"
-PATHS_TO_LFC = c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230626_invitro_condNormalized_all",
-                 "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230626_preinf_condNormalized_sorted",
-                 "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230626_ced_condNormalized_all")
+PATH_TO_DE_GENES = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/GL261_integrated_20230712_ced_noRTNormalized_all/deMatSig_adjp05_lfc01.txt"
+PATHS_TO_LFC = c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_ced_noRTNormalized_all")
 PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_integrated_20230619.Rds"
-CONTEXTS = c("invitro", "preinf", "CED")
-RT = "noRT"
-NT_COLS = c("invitro_non-targeting_RT_non-targeting_noRT",
-            "preinf_non-targeting_RT_non-targeting_noRT",
-            "CED_non-targeting_RT_non-targeting_noRT")
+CONTEXTS = c("CED")
+RADIATION_CONDS = c("noRT", "RT")
+NT_COLS = c("CED_non-targeting_RT_non-targeting_noRT")
 PERTURBS_TO_REMOVE = c("NA_RT", "NA_noRT", "non-targeting_B_RT", "non-targeting_B_noRT")
-OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/nmf/3Context"
-OUTPUT_FILE_NAME = "res_list_2-40.rds"
-NCORES = 50
+OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/nmf/RT_noRT/ced_noRTNormalized"
+OUTPUT_FILE_NAME = "output_matrix_lognormalized_lfc_rank20_MaxModules_CED_noRTNormalized.pdf"
 ZERO_INFLATION_PARAMETER = 0.01
 MODULE_MEMBERSHIP_PERCENTILE_PARAMETER = 0.9
-RANK = 25
+RANK = 20
 
-cat("PATH_TO_DE_GENES: ", PATH_TO_DE_GENES, "\n")
-cat("PATHS_TO_LFC: ", paste(PATHS_TO_LFC, collapse = ", "), "\n")
-cat("PATH_TO_SEURAT_OBJECT: ", PATH_TO_SEURAT_OBJECT, "\n")
-cat("CONTEXTS: ", paste(CONTEXTS, collapse = ", "), "\n")
-cat("RT: ", RT, "\n")
-cat("NT_COLS: ", paste(NT_COLS, collapse = ", "), "\n")
-cat("PERTURBS_TO_REMOVE: ", paste(PERTURBS_TO_REMOVE, collapse = ", "), "\n")
-cat("OUTPUT_DIR: ", OUTPUT_DIR, "\n")
-cat("OUTPUT_FILE_NAME: ", OUTPUT_FILE_NAME, "\n")
-cat("NCORES: ", NCORES, "\n")
-cat("ZERO_INFLATION_PARAMETER: ", ZERO_INFLATION_PARAMETER, "\n")
-cat("MODULE_MEMBERSHIP_PERCENTILE_PARAMETER: ", MODULE_MEMBERSHIP_PERCENTILE_PARAMETER, "\n")
-cat("RANK: ", RANK, "\n")
+print(paste("PATH_TO_DE_GENES:", PATH_TO_DE_GENES))
+print(paste("PATHS_TO_LFC:", PATHS_TO_LFC))
+print(paste("PATH_TO_SEURAT_OBJECT:", PATH_TO_SEURAT_OBJECT))
+print(paste("CONTEXTS:", CONTEXTS))
+print(paste("RADIATION_CONDS:", RADIATION_CONDS))
+print(paste("NT_COLS:", NT_COLS))
+print(paste("PERTURBS_TO_REMOVE:", PERTURBS_TO_REMOVE))
+print(paste("OUTPUT_DIR:", OUTPUT_DIR))
+print(paste("OUTPUT_FILE_NAME:", OUTPUT_FILE_NAME))
+print(paste("ZERO_INFLATION_PARAMETER:", ZERO_INFLATION_PARAMETER))
+print(paste("MODULE_MEMBERSHIP_PERCENTILE_PARAMETER:", MODULE_MEMBERSHIP_PERCENTILE_PARAMETER))
 
 ##############################################################################
 ##############################################################################
@@ -68,17 +60,16 @@ cat("RANK: ", RANK, "\n")
 data.main = readRDS(PATH_TO_SEURAT_OBJECT)
 DefaultAssay(data.main) = "RNA"
 data = NormalizeData(data.main, normalization.method = "LogNormalize", scale.factor = 1e6, verbose = TRUE)
+
 data = subset(data, source %in% CONTEXTS)
-data = subset(data, cond == RT)
+data = subset(data, cond %in% RADIATION_CONDS)
 
 sgRNAConds = unique(data$sgRNACond)
 to_keep = setdiff(sgRNAConds, PERTURBS_TO_REMOVE)
 data = subset(data, sgRNACond %in% to_keep)
 
-deMatSig = read.table(PATH_TO_DE_GENES, header = TRUE, sep = "\t")
+deMatSig = read.table(PATH_TO_DE_GENES)
 deMatSig = na.omit(deMatSig)
-rownames(deMatSig) = deMatSig$X
-deMatSig = deMatSig[,-1]
 
 de_genes = rownames(deMatSig)
 data = subset(data, features = de_genes)
@@ -104,9 +95,6 @@ rownames(avg_matrix) = avg_matrix$gene
 avg_matrix = as.matrix(avg_matrix[, -1])
 avg_matrix = avg_matrix[apply(avg_matrix, 1, function(row) any(row != 0)), ]
 
-# Filter by those perturbs that we have deseq output for. This means they passed
-# a coverage filter.
-
 perturb_list = c()
 for (directory in PATHS_TO_LFC) {
   file_names = list.files(directory)
@@ -116,25 +104,8 @@ for (directory in PATHS_TO_LFC) {
     perturb_list = c(perturb_list, perturb)
   }
 }
-noRT_indices <- grep("noRT", perturb_list, value = FALSE, ignore.case = TRUE)
-perturb_list = perturb_list[noRT_indices]
 perturb_list = c(perturb_list, paste("non-targeting", CONTEXTS[1], "noRT", sep = "_"))
-perturb_list = c(perturb_list, paste("non-targeting", CONTEXTS[2], "noRT", sep = "_"))
-perturb_list = c(perturb_list, paste("non-targeting", CONTEXTS[3], "noRT", sep = "_"))
 avg_matrix = avg_matrix[,perturb_list]
-
-# Obtain a rank estimate by getting NMF at many different ranks.
-
-rank_range = 2:40
-ncores = NCORES
-
-run_nmf = function(r) {
-  model = NMF::nmf(avg_matrix, r, method = "brunet", nrun = 60)
-}
-res_list = mclapply(rank_range, run_nmf, mc.cores = ncores)
-saveRDS(res_list, paste(OUTPUT_DIR, OUTPUT_FILE_NAME, sep = "/"))
-
-print("Finished executing")
 
 # Load the res_list object
 
@@ -221,7 +192,7 @@ for (i in 1:length(module_groups)) {
   combined_term_and_genes = c(combined_term, goi)
   combined_term_and_genes = paste(combined_term_and_genes, collapse = "|")
   enrichr_groups[[combined_term]] = goi
-
+  
   ontology_groups[i, "msigdb_term"] = msigDB_terms[1]
   ontology_groups[i, "go_term"] = GO_terms[1]
   ontology_groups[i, "n_genes"] = length(goi)
@@ -230,7 +201,7 @@ for (i in 1:length(module_groups)) {
   ontology_groups[i, "genes"] = paste(goi, collapse = "|")
   Sys.sleep(3)
 }
-write.table(ontology_groups, paste(OUTPUT_DIR, "ontology_groups_rank25_MaxModules.txt", sep = "/"), sep = "\t")
+write.table(ontology_groups, paste(OUTPUT_DIR, "ontology_groups_rank20_MaxModules.txt", sep = "/"), sep = "\t")
 
 # Generate the log fold change matrix. We keep only those rows
 # that qualify and that have genes that are in the gene_names
@@ -245,10 +216,7 @@ for (directory in PATHS_TO_LFC) {
   }
 }
 
-noRT_indices <- grep("non-targeting_noRT", names(data.list), value = FALSE, ignore.case = TRUE)
-data.list.noRT <- data.list[noRT_indices]
-
-nmfMat <- ldply(lapply(data.list.noRT,function(x) x[,c("feature","log_fc")]),data.frame)
+nmfMat <- ldply(lapply(data.list,function(x) x[,c("feature","log_fc")]),data.frame)
 nmfMat <- reshape(nmfMat, idvar = "feature", v.names = "log_fc",timevar = ".id", direction = "wide")
 nmfMat <- nmfMat[!is.na(nmfMat$feature),]
 row.names(nmfMat) <- nmfMat$feature
@@ -258,6 +226,13 @@ nmfMat[is.na(nmfMat)] <- 0
 nmfMat <- nmfMat[, !colnames(nmfMat) %in% NT_COLS]
 nmfMatsig <- nmfMat[intersect(gene_names,row.names(nmfMat)),]
 nmfMatsig = as.matrix(nmfMatsig)
+
+# Cluster the log fold changes into gene modules
+
+module_means = lapply(enrichr_groups, function(g) {
+  colMeans(nmfMatsig[g, , drop = FALSE])
+})
+expr_matrix = do.call(rbind, module_means)
 
 # Plot a context separated heatmap with annotations.
 
@@ -269,7 +244,6 @@ coverageTblCmp <- rbind(invitronoRT = apply(coverageTbl[c("GL261_48hit_noRT_1","
                         preinfRT = apply(coverageTbl[c("GL261_RT_preinf_MACSFACS_1","GL261_RT_preinf_MACSFACS_2","GL261_RT_preinf_MACSFACS_3"),],2,sum),
                         CEDnoRT = apply(coverageTbl[c("GL261_CED_pool","GL261_noRT_CED_MACSFACS"),],2,sum),
                         CEDRT = coverageTbl[c("GL261_RT_CED_MACSFACS"),])
-
 colnames(coverageTblCmp) <- gsub("non.targeting","NTC",colnames(coverageTblCmp))
 sgAnnot <- data.frame(row.names = colnames(coverageTblCmp), gamma = phenoTbl[colnames(coverageTblCmp),"gamma"], tau = phenoTbl[colnames(coverageTblCmp),"tau"], rho = phenoTbl[colnames(coverageTblCmp),"rho"])
 sgAnnot["non.targeting",] <- c(0,0,0)
@@ -290,60 +264,30 @@ for (i in 1:nrow(tblAnnot)){
   })
 }
 tblAnnot$sgRNACond = paste(tblAnnot$sgRNA,tblAnnot$cond,sep='_')
-
-go_categories = read.table("/raleighlab/data1/liuj/gbm_perturb/analysis/features_48h_GL261_annot2.csv", sep = ",")
-colnames(go_categories) = c("Gene", "GO")
-rownames(go_categories) = go_categories$Gene
-tblAnnot$go_term = go_categories[tblAnnot$sgRNA, "GO"]
-rownames(tblAnnot) = paste(tblAnnot$source, tblAnnot$sgRNA, sep = "_")
-
-write.table(tblAnnot, paste(OUTPUT_DIR, "/", "noRT_annotation_table.txt", sep = ""), sep = "\t")
-
-# Cluster the log fold changes into gene modules
-
-module_means = lapply(enrichr_groups, function(g) {
-  colMeans(nmfMatsig[g, , drop = FALSE])
-})
-expr_matrix = do.call(rbind, module_means)
-colnames(expr_matrix) = sapply(strsplit(colnames(expr_matrix), "_"), function(x) paste(x[1], x[2], sep="_"))
-
-# Plot the heatmap
+write.table(tblAnnot, paste(OUTPUT_DIR, "/", "annotation_table.txt", sep = ""), sep = "\t")
 
 poi = colnames(expr_matrix)
-ht = Heatmap(expr_matrix, 
-        name = "Log Fold Change Matrix Clustered on Rank-25 NMF",
-        col = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
-        top_annotation = HeatmapAnnotation(gamma = anno_barplot(as.numeric(tblAnnot[poi,"gamma"]), bar_width = 0.9),
-                                           tau = anno_barplot(as.numeric(tblAnnot[poi,"tau"]), bar_width = 0.9),
-                                           rho = anno_barplot(as.numeric(tblAnnot[poi,"rho"]), bar_width = 0.9),
-                                           GO = tblAnnot[poi,"go_term"],
-                                           treatment = tblAnnot[poi,"cond"],
-                                           context = tblAnnot[poi,"source"],
-                                           coverage_log10 = log(as.numeric(tblAnnot[poi,"coverage"])),
-                                           col = list(treatment = c("noRT" = "#2166AC", "RT" = "#B2182B","RTvsnoRT" = "green4"),
-                                                      context = c("invitro" = "#D53E4F", "preinf" = "#FC8D59","CED" = "#FEE08B"),
-                                                      GO = c("Acetyltransferase" = "#9E0142", "Ankyrin Repeat" = "#D53E4F",
-                                                             "Cyclin-dependent kinase inhibitor" = "#F46D43", "Signaling" = "#FDAE61",
-                                                             "DNA damage response" = "#FEE08B", "DNA Replication" = "#FFFFBF",
-                                                             "LIM Domain" = "#E6F598", "Metabolism" = "#ABDDA4","Mitochondria" = "#66C2A5",
-                                                             "Mitosis" = "#3288BD", "Proteasome" = "#5E4FA2", "Ras pathway" = "#1B9E77",
-                                                             "Receptor" = "#D95F02", "RNA polymerase" = "#7570B3", "Telomere" = "#E7298A","Transcription" = "#66A61E","Translation" = "#E6AB02",
-                                                             "Non-targeting" = "gray50"),
-                                                      coverage_log10 = colorRamp2(quantile(log(as.numeric(tblAnnot[poi,"coverage"])+1,10), seq(0, 1, by = 0.25)), viridis(5))
-                                           )),
-        column_split = factor(tblAnnot[poi,"source"], levels = c("invitro","preinf","CED")),
-        cluster_column_slices = FALSE,
-        cluster_columns = TRUE,
-        width = ncol(expr_matrix)*unit(4, "mm"),
-        height = nrow(expr_matrix)*unit(4, "mm"),
+cond_factor = factor(tblAnnot[poi,"cond"], levels = c("RT", "noRT"))
+column_order = as.numeric(cond_factor)
+ht = Heatmap(
+  expr_matrix,
+  name = "NMF Log Fold Change Matrix RT vs. noRT, ced noRTNormalized",
+  col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red")),
+  top_annotation = HeatmapAnnotation(gamma = anno_barplot(as.numeric(tblAnnot[poi,"gamma"]), bar_width = 0.9),
+                                     tau = anno_barplot(as.numeric(tblAnnot[poi,"tau"]), bar_width = 0.9),
+                                     rho = anno_barplot(as.numeric(tblAnnot[poi,"rho"]), bar_width = 0.9),
+                                     GO = tblAnnot[poi,"GO"],
+                                     treatment = tblAnnot[poi,"cond"],
+                                     context = tblAnnot[poi,"source"],
+                                     coverage = as.numeric(tblAnnot[poi,"coverage"]),
+                                     col = list(treatment = c("noRT" = "#2166AC", "RT" = "#B2182B", "control" = "green4"),
+                                                context = c("invitro" = "#D53E4F", "preinf" = "#FC8D59","CED" = "#FEE08B"))),
+  column_split = cond_factor,
+  width = ncol(expr_matrix)*unit(4, "mm"),
+  height = nrow(expr_matrix)*unit(4, "mm"),
 )
-pdf(paste(OUTPUT_DIR, "output_matrix_lognormalized_lfc_rank25_MaxModules_range1.pdf", sep = "/"),
-    width=35,
-    height=19,
-    useDingbats=FALSE)
+pdf(paste(OUTPUT_DIR, OUTPUT_FILE_NAME, sep = "/"), height = 30, width = 30)
 draw(ht, heatmap_legend_side = "top", annotation_legend_side = "top")
 dev.off()
 
-print("Finished executing!")
-
-# EOF
+print("Finished executing")
