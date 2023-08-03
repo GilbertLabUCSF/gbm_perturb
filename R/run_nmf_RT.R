@@ -28,7 +28,7 @@ RADIATION_CONDS = c("noRT", "RT")
 PERTURBS_TO_REMOVE = c("NA_RT", "NA_noRT", "non-targeting_B_RT", "non-targeting_B_noRT")
 OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/nmf/RT_noRT/ced_noRTNormalized"
 OUTPUT_FILE_NAME = "ced_res_list_log_noRTNormalized_ranks2_40.rds"
-NCORES = 10
+NCORES = 15
 
 print(paste("PATH_TO_DE_GENES:", PATH_TO_DE_GENES))
 print(paste("PATHS_TO_LFC:", PATHS_TO_LFC))
@@ -107,7 +107,7 @@ rank_range = 2:40
 ncores = NCORES
 
 run_nmf = function(r) {
-  model = NMF::nmf(avg_matrix, r, method = "brunet", nrun = 30)
+  model = NMF::nmf(avg_matrix, r, method = "brunet", nrun = 60)
 }
 res_list = mclapply(rank_range, run_nmf, mc.cores = ncores)
 saveRDS(res_list, paste(OUTPUT_DIR, OUTPUT_FILE_NAME, sep = "/"))

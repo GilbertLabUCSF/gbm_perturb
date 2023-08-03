@@ -25,18 +25,19 @@ set.seed(NULL)
 ##############################################################################
 # Inputs:
 
-PATH_TO_DE_GENES = "/raleighlab/data1/liuj/gbm_perturb/analysis/gbm_pdx_perturb_GL261_integrate_xfp/GL261_integrated_20230626_noRT_all/GL261_integrated_20230626_noRT_all_deMatSig_padj05_abs0.1.txt"
-PATHS_TO_LFC = c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230626_invitro_condNormalized_all",
-                 "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230626_preinf_condNormalized_sorted",
-                 "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230626_ced_condNormalized_all")
+PATH_TO_DE_GENES = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/GL261_integrated_20230729_3Context_noRTNormalized_RTOnly/deMatSig_adjp05_lfc01.txt"
+PATHS_TO_LFC = c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_invitro_noRTNormalized_all",
+                 "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_preinf_noRTNormalized_sorted",
+                 "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_ced_noRTNormalized_all")
 PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_integrated_20230619.Rds"
 CONTEXTS = c("invitro", "preinf", "CED")
-RT = "noRT"
+RT = "RT"
 NT_COLS = c("invitro_non-targeting_RT_non-targeting_noRT",
             "preinf_non-targeting_RT_non-targeting_noRT",
             "CED_non-targeting_RT_non-targeting_noRT")
+NT_COLS = c("non-targeting_invitro_RT", "non-targeting_preinf_RT", "non-targeting_CED_RT")
 PERTURBS_TO_REMOVE = c("NA_RT", "NA_noRT", "non-targeting_B_RT", "non-targeting_B_noRT")
-OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/nmf/3Context"
+OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/nmf/3Context_RT/noRTNormalized_RTOnly_lfc01"
 OUTPUT_FILE_NAME = "res_list_2-40.rds"
 NCORES = 50
 ZERO_INFLATION_PARAMETER = 0.01
@@ -75,10 +76,10 @@ sgRNAConds = unique(data$sgRNACond)
 to_keep = setdiff(sgRNAConds, PERTURBS_TO_REMOVE)
 data = subset(data, sgRNACond %in% to_keep)
 
-deMatSig = read.table(PATH_TO_DE_GENES, header = TRUE, sep = "\t")
+deMatSig = read.table(PATH_TO_DE_GENES)
 deMatSig = na.omit(deMatSig)
-rownames(deMatSig) = deMatSig$X
-deMatSig = deMatSig[,-1]
+# rownames(deMatSig) = deMatSig$X
+# deMatSig = deMatSig[,-1]
 
 de_genes = rownames(deMatSig)
 data = subset(data, features = de_genes)
@@ -117,13 +118,16 @@ for (directory in PATHS_TO_LFC) {
   }
 }
 noRT_indices <- grep("noRT", perturb_list, value = FALSE, ignore.case = TRUE)
-perturb_list = perturb_list[noRT_indices]
-perturb_list = c(perturb_list, paste("non-targeting", CONTEXTS[1], "noRT", sep = "_"))
-perturb_list = c(perturb_list, paste("non-targeting", CONTEXTS[2], "noRT", sep = "_"))
-perturb_list = c(perturb_list, paste("non-targeting", CONTEXTS[3], "noRT", sep = "_"))
+perturb_list = perturb_list[-noRT_indices]
+
+# perturb_list = perturb_list[noRT_indices]
+# perturb_list = c(perturb_list, paste("non-targeting", CONTEXTS[1], "noRT", sep = "_"))
+# perturb_list = c(perturb_list, paste("non-targeting", CONTEXTS[2], "noRT", sep = "_"))
+# perturb_list = c(perturb_list, paste("non-targeting", CONTEXTS[3], "noRT", sep = "_"))
 avg_matrix = avg_matrix[,perturb_list]
 
 # Obtain a rank estimate by getting NMF at many different ranks.
+print("Beginning NMF")
 
 rank_range = 2:40
 ncores = NCORES
@@ -139,6 +143,12 @@ print("Finished executing")
 # Load the res_list object
 
 res_list = readRDS(RES_LIST_PATH)
+
+if(sum(is.nan(avg_matrix)) > 0){
+  print("Dataset has missing values.")
+} else {
+  print("Dataset doesn't have missing values.")
+}
 
 # Examine and save the mean squared error and cophenetic correlation coefficient
 
@@ -230,7 +240,7 @@ for (i in 1:length(module_groups)) {
   ontology_groups[i, "genes"] = paste(goi, collapse = "|")
   Sys.sleep(3)
 }
-write.table(ontology_groups, paste(OUTPUT_DIR, "ontology_groups_rank25_MaxModules.txt", sep = "/"), sep = "\t")
+write.table(ontology_groups, paste(OUTPUT_DIR, "ontology_groups_rank30_MaxModules.txt", sep = "/"), sep = "\t")
 
 # Generate the log fold change matrix. We keep only those rows
 # that qualify and that have genes that are in the gene_names
@@ -239,14 +249,15 @@ data.list = list()
 for (directory in PATHS_TO_LFC) {
   file_names = list.files(directory)
   for (i in file_names) {
-    name = gsub(".csv", "", i)
+    split_string = strsplit(i, "_")[[1]]
+    perturb = paste(split_string[2], split_string[1], split_string[3], sep = "_")
     df = read.table(paste(directory, "/", i, sep = ""))
-    data.list[[name]] = df
+    data.list[[perturb]] = df
   }
 }
 
-noRT_indices <- grep("non-targeting_noRT", names(data.list), value = FALSE, ignore.case = TRUE)
-data.list.noRT <- data.list[noRT_indices]
+noRT_indices <- grep("noRT", names(data.list), value = FALSE, ignore.case = TRUE)
+data.list.noRT = data.list[-noRT_indices]
 
 nmfMat <- ldply(lapply(data.list.noRT,function(x) x[,c("feature","log_fc")]),data.frame)
 nmfMat <- reshape(nmfMat, idvar = "feature", v.names = "log_fc",timevar = ".id", direction = "wide")
@@ -274,8 +285,8 @@ colnames(coverageTblCmp) <- gsub("non.targeting","NTC",colnames(coverageTblCmp))
 sgAnnot <- data.frame(row.names = colnames(coverageTblCmp), gamma = phenoTbl[colnames(coverageTblCmp),"gamma"], tau = phenoTbl[colnames(coverageTblCmp),"tau"], rho = phenoTbl[colnames(coverageTblCmp),"rho"])
 sgAnnot["non.targeting",] <- c(0,0,0)
 tblAnnot <- data.frame(row.names=colnames(nmfMatsig),
-                       sgRNA = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 2),
-                       source = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 1),
+                       sgRNA = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 1),
+                       source = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 2),
                        cond = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 3))
 tblAnnot$sourceCond <- paste(tblAnnot$source,tblAnnot$cond,sep='')
 tblAnnot$gamma <- sgAnnot[tblAnnot$sgRNA,"gamma"]
@@ -297,7 +308,7 @@ rownames(go_categories) = go_categories$Gene
 tblAnnot$go_term = go_categories[tblAnnot$sgRNA, "GO"]
 rownames(tblAnnot) = paste(tblAnnot$source, tblAnnot$sgRNA, sep = "_")
 
-write.table(tblAnnot, paste(OUTPUT_DIR, "/", "noRT_annotation_table.txt", sep = ""), sep = "\t")
+write.table(tblAnnot, paste(OUTPUT_DIR, "/", "RT_annotation_table.txt", sep = ""), sep = "\t")
 
 # Cluster the log fold changes into gene modules
 
@@ -305,12 +316,12 @@ module_means = lapply(enrichr_groups, function(g) {
   colMeans(nmfMatsig[g, , drop = FALSE])
 })
 expr_matrix = do.call(rbind, module_means)
-colnames(expr_matrix) = sapply(strsplit(colnames(expr_matrix), "_"), function(x) paste(x[1], x[2], sep="_"))
+colnames(expr_matrix) = sapply(strsplit(colnames(expr_matrix), "_"), function(x) paste(x[2], x[1], sep="_"))
 
 # Plot the heatmap
 
 poi = colnames(expr_matrix)
-ht = Heatmap(expr_matrix, 
+ht = Heatmap(expr_matrix,
         name = "Log Fold Change Matrix Clustered on Rank-25 NMF",
         col = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
         top_annotation = HeatmapAnnotation(gamma = anno_barplot(as.numeric(tblAnnot[poi,"gamma"]), bar_width = 0.9),
@@ -329,7 +340,7 @@ ht = Heatmap(expr_matrix,
                                                              "Mitosis" = "#3288BD", "Proteasome" = "#5E4FA2", "Ras pathway" = "#1B9E77",
                                                              "Receptor" = "#D95F02", "RNA polymerase" = "#7570B3", "Telomere" = "#E7298A","Transcription" = "#66A61E","Translation" = "#E6AB02",
                                                              "Non-targeting" = "gray50"),
-                                                      coverage_log10 = colorRamp2(quantile(log(as.numeric(tblAnnot[poi,"coverage"])+1,10), seq(0, 1, by = 0.25)), viridis(5))
+                                                      coverage_log10 = colorRamp2(quantile(log(as.numeric(tblAnnot[poi,"coverage"]),10), probs = seq(0, 1, by = 0.25)), viridis(5))
                                            )),
         column_split = factor(tblAnnot[poi,"source"], levels = c("invitro","preinf","CED")),
         cluster_column_slices = FALSE,

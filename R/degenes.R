@@ -23,9 +23,13 @@ set.seed(5220)
 ##############################################################################
 # Inputs:
 
-INPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_ced_noRTNormalized_all"
-OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/GL261_integrated_20230712_ced_noRTNormalized_all"
-NT_COLS = c("CED_non-targeting_RT_non-targeting_noRT")
+INPUT_DIRS = c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230626_ced_condNormalized_all",
+               "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230626_invitro_condNormalized_all",
+               "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230626_preinf_condNormalized_sorted")
+OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/GL261_integrated_20230729_3Context_condNormalized_RTOnly"
+NT_COLS = c("CED_non-targeting_RT_non-targeting_noRT",
+            "preinf_non-targeting_RT_non-targeting_noRT",
+            "invitro_non-targeting_RT_non-targeting_noRT")
 EXPR_CUTOFF = 0.5
 ABS_CUTOFF = 0.01
 TOP_BOT_CUTOFF = 0.01
@@ -37,15 +41,28 @@ SEED = 5220
 
 # Import the DESeq outputs
 
-file_names = list.files(INPUT_DIR)
-data.list = list()
-for (i in file_names) {
-  name = gsub(".csv", "", i)
-  df = read.table(paste(INPUT_DIR, "/", i, sep = ""))
-  data.list[[name]] = df
+data.list.all = list()
+for (dir in INPUT_DIRS) {
+  file_names = list.files(dir)
+  for (i in file_names) {
+    name = gsub(".csv", "", i)
+    df = read.table(paste(dir, "/", i, sep = ""))
+    data.list.all[[name]] = df
+  }
 }
 
-# Filter for only noRT perturbations - this is for analysis development
+# Filter for only RT Only perturbations - this is for analysis development
+
+noRT_names = c()
+for (i in names(data.list.all)) {
+  split_string = strsplit(i, "_")[[1]]
+  condition = split_string[[3]]
+  if (condition == "noRT") {
+    noRT_names = c(i, noRT_names)
+  }
+}
+data.list = data.list.all
+data.list = data.list.all[!names(data.list) %in% noRT_names]
 
 # df.names = names(data.list)
 # matched.names = df.names[grep("non-targeting_noRT", df.names)]
@@ -115,7 +132,7 @@ deGenesAll.padj = unique(unlist(lapply(data.list, function(x) {
   x = x[!is.na(x$pvalue), ]
   x = x[!is.na(x$padj), ]
   x = x[x$padj < 0.05, ]
-  x = x[abs(x$log_fc) > 0.1, ]
+  x = x[abs(x$log_fc) > 1, ]
   x$feature
 })))
 
@@ -158,5 +175,5 @@ deMat[is.na(deMat)] <- 0
 deMat <- deMat[, !colnames(deMat) %in% NT_COLS]
 deMatsig <- deMat[intersect(deGenesAll.padj,row.names(deMat)),]
 
-write.table(deMat, paste(OUTPUT_DIR, "/deMat_adjp05_lfc01", ".txt", sep = ""))
-write.table(deMatsig, paste(OUTPUT_DIR, "/deMatSig_adjp05_lfc01", ".txt", sep = ""))
+write.table(deMat, paste(OUTPUT_DIR, "/deMat_adjp05_lfc1", ".txt", sep = ""))
+write.table(deMatsig, paste(OUTPUT_DIR, "/deMatSig_adjp05_lfc1", ".txt", sep = ""))
