@@ -2,11 +2,15 @@
 # 
 # Users should configure:
 # - The intput Seurat object
+# - The experimental context
 # - The identities of the sorted cells
+# - Whether to screen for sorted cells only
+# - The non-targeting guides
+# - Guides to ignore
 # - The output directory
-# - The experimental context to generate output for. We default to "iv"
 # - A random seed
 # - Whether we normalize to non-targeting noRT or normalize to the condition
+# - The bottom coverage threshold
 # 
 # Output: deseq output per perturbation. By default, we use 3 cells per
 # pseudoreplicate.
@@ -24,16 +28,16 @@ set.seed(5220)
 ##############################################################################
 # Inputs:
 
-PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_integrated_20230619.Rds"
-EXP_CONTEXT = "CED"
-SORTED_IDENTITIES = c("MACSFACS")
+PATH_TO_SEURAT_OBJECT = ""
+EXP_CONTEXT = ""
+SORTED_IDENTITIES = c("")
 SORTED_IDENTITES_ONLY = FALSE
-NT_GUIDES = c("non-targeting")
-IGNORE_GUIDES = c("NA_RT", "NA_noRT", "non-targeting_B_RT", "non-targeting_B_noRT")
-OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_ced_noRTNormalized_all"
+NT_GUIDES = c("")
+IGNORE_GUIDES = c("")
+OUTPUT_DIR = ""
 SEED = 5220
 NORMALIZE_TO_NT_NORT = TRUE
-MINIMUM_COVERAGE = 5
+MINIMUM_COVERAGE = 0
 
 print(paste("PATH_TO_SEURAT_OBJECT =", PATH_TO_SEURAT_OBJECT))
 print(paste("EXP_CONTEXT =", EXP_CONTEXT))
@@ -62,11 +66,11 @@ if (SORTED_IDENTITES_ONLY) {
   data.context = subset(data.context, sorted %in% SORTED_IDENTITIES)
 }
 
-# Screen for cells part of a group with coverage of > 5 cells
+# Screen for cells part of a group with coverage of > MINIMUM_COVERAGE cells
 
 sgRNACond_counts = table(data.context$sgRNACond)
 data.context = subset(data.context, sgRNACond %in% 
-                        names(sgRNACond_counts[sgRNACond_counts > 5]))
+                        names(sgRNACond_counts[sgRNACond_counts > MINIMUM_COVERAGE]))
 
 # Get rid of all guides in the ignore category
 
