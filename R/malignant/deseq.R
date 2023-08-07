@@ -1,15 +1,25 @@
-# Run DESeq2 on a Seurat object according to our filters and configurations
+# Run DESeq2 using DElegate on a Seurat object according to our filters 
+# and configurations.
+# 
+# Author: Christopher Zou
 # 
 # Users should configure:
-# - The intput Seurat object
+# - The input Seurat object, which should have source, sorted, cond and 
+#   sgRNACond metadata
+# - The experimental context
 # - The identities of the sorted cells
+# - Whether to screen for sorted cells only
+# - The non-targeting guides
+# - Guides to ignore
 # - The output directory
-# - The experimental context to generate output for. We default to "iv"
 # - A random seed
 # - Whether we normalize to non-targeting noRT or normalize to the condition
+# - The bottom coverage threshold. We only consider cells with coverage above
+#   this.
+# This file can be run as a script once configured.
 # 
-# Output: deseq output per perturbation. By default, we use 3 cells per
-# pseudoreplicate.
+# Output: DElegate output as a CSV file per perturbation. By default, DElegate
+# uses 3 cells per pseudoreplicate.
 
 ##############################################################################
 ##############################################################################
@@ -18,21 +28,20 @@
 library(Seurat)
 library(DElegate)
 library(dplyr)
-set.seed(5220)
 
 ##############################################################################
 ##############################################################################
 # Inputs:
 
-PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_integrated_20230619.Rds"
-EXP_CONTEXT = "invitro"
-SORTED_IDENTITIES = c("MACSFACS")
+PATH_TO_SEURAT_OBJECT = ""
+EXP_CONTEXT = ""
+SORTED_IDENTITIES = c("")
 SORTED_IDENTITES_ONLY = FALSE
-NT_GUIDES = c("non-targeting")
-IGNORE_GUIDES = c("NA_RT", "NA_noRT", "non-targeting_B_RT", "non-targeting_B_noRT")
-OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/GL261_integrated_20230626_invitro_condNormalized_all"
+NT_GUIDES = c("")
+IGNORE_GUIDES = c("")
+OUTPUT_DIR = ""
 SEED = 5220
-NORMALIZE_TO_NT_NORT = FALSE
+NORMALIZE_TO_NT_NORT = TRUE
 MINIMUM_COVERAGE = 5
 
 print(paste("PATH_TO_SEURAT_OBJECT =", PATH_TO_SEURAT_OBJECT))
@@ -45,6 +54,8 @@ print(paste("OUTPUT_DIR =", OUTPUT_DIR))
 print(paste("SEED =", SEED))
 print(paste("NORMALIZE_TO_NT_NORT =", NORMALIZE_TO_NT_NORT))
 print(paste("MINIMUM_COVERAGE =", MINIMUM_COVERAGE))
+set.seed(SEED)
+print(paste("SEED SET TO ", SEED))
 
 ##############################################################################
 ##############################################################################
@@ -62,11 +73,11 @@ if (SORTED_IDENTITES_ONLY) {
   data.context = subset(data.context, sorted %in% SORTED_IDENTITIES)
 }
 
-# Screen for cells part of a group with coverage of >= 5 cells
+# Screen for cells part of a group with coverage of > MINIMUM_COVERAGE cells
 
 sgRNACond_counts = table(data.context$sgRNACond)
 data.context = subset(data.context, sgRNACond %in% 
-                        names(sgRNACond_counts[sgRNACond_counts > 5]))
+                        names(sgRNACond_counts[sgRNACond_counts > MINIMUM_COVERAGE]))
 
 # Get rid of all guides in the ignore category
 
