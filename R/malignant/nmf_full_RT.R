@@ -1,5 +1,42 @@
 # Run non-negative matrix factorization given a list of differentially
-# expressed genes.
+# expressed genes. This file provides a full example of our code run
+# filtering for RT only cells.
+# 
+# Author: Christopher Zou
+# 
+# Note that in addition to file names configured at the point of output,
+# we configure:
+# - The path to differentially expressed genes, the output of degenes.R
+# - A list of paths to outputs of deseq.R, or DElegate output
+# - The path to the base Seurat object, which should have source, cond, RT,
+#   and sgRNACond metadata
+# - A list of contexts to consider
+# - The condition, in this case radiation metadata desired
+# - A list of non-targeting perturbations to omit in output
+# - The desired output directory
+# - The desired NMF output file name
+# - The number of cores to use when running NMF
+# - The zero inflation below which we should not consider genes in NMF output
+# - The desired rank, once determined, of NMF
+#
+# Optionally, you may also include:
+# - The path to an annotation table that includes coverage information
+# - The path to a GO-term labeling table (this is used for color labeling
+#   of go-terms)
+# The script will run without these if you remove the annotations in the
+# heatmap.
+# 
+# Once configured, this file can be run as a script
+# 
+# Output:
+# - A list of NMF objects for ranks in RANK_RANGE, with NRUNS_PER_RANK runs
+#   at each rank
+# - Mean squared error and cophenetic coefficient plots for the rank of choice
+# - The ontology-group labeled gene modules in a table for the rank of choice
+# - The annotation table generated for all the perturbations considered
+# - A heatmap of log fold changes, with genes condensed into NMF-informed
+#   gene sets.
+# - The underlying expression matrix for the heatmap
 
 ##############################################################################
 ##############################################################################
@@ -19,7 +56,7 @@ library(ComplexHeatmap)
 library(colorRamp2)
 library(ggplot2)
 library(viridis)
-set.seed(NULL)
+set.seed(NULL) # For NMF
 
 ##############################################################################
 ##############################################################################
@@ -41,8 +78,11 @@ OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs
 OUTPUT_FILE_NAME = "res_list_2-40.rds"
 NCORES = 50
 ZERO_INFLATION_PARAMETER = 0.01
-MODULE_MEMBERSHIP_PERCENTILE_PARAMETER = 0.9
 RANK = 25
+RANK_RANGE = 2:40
+NRUNS_PER_RANK = 60
+PHENOTBL = ""
+GO_CATEGORIES = ""
 
 cat("PATH_TO_DE_GENES: ", PATH_TO_DE_GENES, "\n")
 cat("PATHS_TO_LFC: ", paste(PATHS_TO_LFC, collapse = ", "), "\n")
@@ -55,8 +95,11 @@ cat("OUTPUT_DIR: ", OUTPUT_DIR, "\n")
 cat("OUTPUT_FILE_NAME: ", OUTPUT_FILE_NAME, "\n")
 cat("NCORES: ", NCORES, "\n")
 cat("ZERO_INFLATION_PARAMETER: ", ZERO_INFLATION_PARAMETER, "\n")
-cat("MODULE_MEMBERSHIP_PERCENTILE_PARAMETER: ", MODULE_MEMBERSHIP_PERCENTILE_PARAMETER, "\n")
 cat("RANK: ", RANK, "\n")
+cat("RANK RANGE: ", RANK_RANGE, "\n")
+cat("NRUNS_PER_RANK: ", NRUNS_PER_RANK, "\n")
+cat("PHENOTBL: ", PHENOTBL, "\n")
+cat("GO CATEGORIES: ", GO_CATEGORIES, "\n")
 
 ##############################################################################
 ##############################################################################
@@ -78,8 +121,6 @@ data = subset(data, sgRNACond %in% to_keep)
 
 deMatSig = read.table(PATH_TO_DE_GENES, header = TRUE)
 deMatSig = na.omit(deMatSig)
-# rownames(deMatSig) = deMatSig$X
-# deMatSig = deMatSig[,-1]
 
 de_genes = rownames(deMatSig)
 data = subset(data, features = de_genes)
@@ -119,21 +160,16 @@ for (directory in PATHS_TO_LFC) {
 }
 noRT_indices <- grep("noRT", perturb_list, value = FALSE, ignore.case = TRUE)
 perturb_list = perturb_list[-noRT_indices]
-
-# perturb_list = perturb_list[noRT_indices]
-# perturb_list = c(perturb_list, paste("non-targeting", CONTEXTS[1], "noRT", sep = "_"))
-# perturb_list = c(perturb_list, paste("non-targeting", CONTEXTS[2], "noRT", sep = "_"))
-# perturb_list = c(perturb_list, paste("non-targeting", CONTEXTS[3], "noRT", sep = "_"))
 avg_matrix = avg_matrix[,perturb_list]
 
 # Obtain a rank estimate by getting NMF at many different ranks.
 print("Beginning NMF")
 
-rank_range = 2:40
+rank_range = RANK_RANGE
 ncores = NCORES
 
 run_nmf = function(r) {
-  model = NMF::nmf(avg_matrix, r, method = "brunet", nrun = 60)
+  model = NMF::nmf(avg_matrix, r, method = "brunet", nrun = NRUNS_PER_RANK)
 }
 res_list = mclapply(rank_range, run_nmf, mc.cores = ncores)
 saveRDS(res_list, paste(OUTPUT_DIR, OUTPUT_FILE_NAME, sep = "/"))
@@ -188,9 +224,6 @@ W.df = as.data.frame(W)
 gene_modules <- data.frame(gene = gene_names, modules = NA)
 for (i in 1:nrow(W.df)) {
   gene_modules[i, "modules"] = which.max(W.df[i,])
-  # threshold = MODULE_MEMBERSHIP_PERCENTILE_PARAMETER * max(W.df[i,])
-  # belongs_to = which(W.df[i,] >= threshold)
-  # gene_modules[i, "modules"] = paste(belongs_to, collapse = "_")
 }
 
 # Once we have modules, transform the modules into module groups. Throw out
@@ -210,8 +243,6 @@ for (i in 1:nrow(gene_modules)) {
   for (module in modules) {
     module_groups[[module]] = c(module_groups[[module]], gene)
   }
-  # module = as.character(gene_modules[i, "modules"])
-  # module_groups[[module]] = c(module_groups[[module]], gene)
 }
 
 # Label the module groups using EnrichR
@@ -277,7 +308,7 @@ nmfMatsig = as.matrix(nmfMatsig)
 
 # Plot a context separated heatmap with annotations.
 
-phenoTbl <- read.table('/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_1+2_results_table.txt',sep='\t',header=TRUE,row.names=1)
+phenoTbl <- read.table(PHENOTBL,sep='\t',header=TRUE,row.names=1)
 coverageTbl <- read.table('/raleighlab/data1/liuj/gbm_perturb/analysis/gbm_pdx_perturb_GL261_integrate_xfp/pdx_perturb_GL261_concordant_sgRNAs.txt',header=TRUE,sep='\t')
 coverageTblCmp <- rbind(invitronoRT = apply(coverageTbl[c("GL261_48hit_noRT_1","GL261_48hit_noRT_2"),],2,sum),
                         invitroRT = apply(coverageTbl[c("GL261_48hit_RT_1","GL261_48hit_RT_2"),],2,sum),
@@ -307,7 +338,7 @@ for (i in 1:nrow(tblAnnot)){
 }
 tblAnnot$sgRNACond = paste(tblAnnot$sgRNA,tblAnnot$cond,sep='_')
 
-go_categories = read.table("/raleighlab/data1/liuj/gbm_perturb/analysis/features_48h_GL261_annot2.csv", sep = ",")
+go_categories = read.table(GO_CATEGORIES, sep = ",")
 colnames(go_categories) = c("Gene", "GO")
 rownames(go_categories) = go_categories$Gene
 tblAnnot$go_term = go_categories[tblAnnot$sgRNA, "GO"]

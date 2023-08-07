@@ -1,15 +1,38 @@
-# Run DESeq2 on a Seurat object according to our filters and configurations
+# Analysis of microenvironment cells, replicating the deseq, degenes, and NMF
+# steps from the malignant cells.
 # 
-# Users should configure:
-# - The intput Seurat object
-# - The identities of the sorted cells
-# - The output directory
-# - The experimental context to generate output for. We default to "iv"
-# - A random seed
-# - Whether we normalize to non-targeting noRT or normalize to the condition
+# Author: Christopher Zou
 # 
-# Output: deseq output per perturbation. By default, we use 3 cells per
-# pseudoreplicate.
+# Usage: to more easily compartmentalize the relatively simpler SB28 analysis,
+# we include here several sections which can be turned on and off through
+# the configuration as users wish.
+# 
+# Configurable options:
+# - Path to the Seurat object. It should have cell type labels.
+# - The label of the non-targeting sgRNA guide
+# - The DESeq output directory
+# - The degenes output directory
+# - The NMF output directory
+# - The NMF output file name
+# - The minimum coverage threshold when considering for DESeq
+# - Options for running deseq, degene, and NMF
+# - The range of ranks to run NMF for
+# - The number of runs per rank
+# - The number of cores to use when running NMF
+# 
+# Outputs (see the malignant analysis outputs for details):
+# - DESeq results: a directory of CSV files
+# - DE genes results: a design matrix that lists LFC for all DE genes by
+#   perturbation
+# - NMF results:
+#   - A list of NMF runs
+#   - Plots for mean squared error and the cophenetic correlation coefficient
+#     for the desired rank
+#   - The ontology-group labeled gene modules in a table for the rank of choice
+#   - The annotation table generated for all the perturbations considered
+#   - A heatmap of log fold changes, with genes condensed into NMF-informed
+#   gene sets.
+#   - The underlying expression matrix for the heatmap
 
 ##############################################################################
 ##############################################################################
@@ -19,7 +42,7 @@ library(Seurat)
 library(DElegate)
 library(dplyr)
 library(NMF)
-set.seed(5220)
+set.seed(NULL) # For NMF
 
 ##############################################################################
 ##############################################################################
@@ -31,11 +54,13 @@ DESEQ_OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_ou
 DEGENES_OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_outputs/de_genes/SB28_integrated_integrated_micro4_macrophagesOnly"
 NMF_OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_outputs/nmf/macrophageOnly"
 NMF_OUTPUT_FILENAME = "res_list2-40.rds"
-SEED = 5220
 MINIMUM_COVERAGE = 5
 DESEQ = TRUE
 DEGENES = TRUE
 RUN_NMF = TRUE
+RANK_RANGE = 2:40
+NRUNS_PER_RANK = 60
+NCORES = 50
 
 print(paste("PATH_TO_SEURAT_OBJECT =", PATH_TO_SEURAT_OBJECT))
 print(paste("NT_GUIDES =", NT_GUIDE))
@@ -157,7 +182,6 @@ if (DEGENES) {
   write.table(deMatsig, paste(DEGENES_OUTPUT_DIR, "/deMatSig_p05_lfc01", ".txt", sep = ""))
 }
 
-
 print("Finished generating DE genes!")
 
 # Generate average matrix
@@ -207,12 +231,12 @@ avg_matrix = avg_matrix + 0.0001
 
 if (RUN_NMF) {
   print("Beginning NMF")
-  rank_range = 2:40
+  rank_range = RANK_RANGE
   
   run_nmf = function(r) {
-    model = NMF::nmf(avg_matrix, r, method = "brunet", nrun = 60)
+    model = NMF::nmf(avg_matrix, r, method = "brunet", nrun = NRUNS_PER_RANK)
   }
-  res_list = mclapply(rank_range, run_nmf, mc.cores = 50)
+  res_list = mclapply(rank_range, run_nmf, mc.cores = NCORES)
   saveRDS(res_list, paste(NMF_OUTPUT_DIR, OUTPUT_FILE_NAME, sep = "/"))
 }
 
@@ -333,6 +357,7 @@ for (RANK in RANKS) {
     colMeans(nmfMatsig[g, , drop = FALSE])
   })
   expr_matrix = do.call(rbind, module_means)
+  write.table(expr_matrix, paste(OUTPUT_DIR, "output_matrix_lognormalized_lfc_rank25_MaxModules.txt", sep = "/"), sep = "\t")
   
   # Plot the heatmap
   
