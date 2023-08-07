@@ -1,6 +1,6 @@
 # GBM-Perturb
 
-This is the analysis code for the gbm-perturb project.
+This is analysis code for the output of _in vivo_ perturb-seq experiments.
 
 ## Setup
 
@@ -64,7 +64,7 @@ Current as of 8/7/2023
 
 ## Maintenance
 
-The gbm-perturb project was written by Christopher Zou, Ashir Borah, and John
+Code here was authored by Christopher Zou, Ashir Borah, and John
 Liu. It is in a pretty scientifically useful, but pretty low standard
 from a software engineering perspective state. Please feel free to fork or 
 make PRs as you see fit in order to make things easier to work with!
