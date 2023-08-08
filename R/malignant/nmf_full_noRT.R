@@ -344,7 +344,7 @@ for (i in 1:nrow(tblAnnot)){
 }
 tblAnnot$sgRNACond = paste(tblAnnot$sgRNA,tblAnnot$cond,sep='_')
 
-go_categories = read.table(GO_CATEGORIES), sep = ",")
+go_categories = read.table(GO_CATEGORIES, sep = ",")
 colnames(go_categories) = c("Gene", "GO")
 rownames(go_categories) = go_categories$Gene
 tblAnnot$go_term = go_categories[tblAnnot$sgRNA, "GO"]
