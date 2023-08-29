@@ -32,21 +32,30 @@ library(dplyr)
 ##############################################################################
 # Inputs:
 
-INPUT_DIRS = c("")
-OUTPUT_DIR = ""
-NT_COLS = c("")
+DESEQ_WD = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/"
+INPUT_DIRS = c("GL261_integrated_20230819_ced_noRTNormalized_downsampled_all",
+               "GL261_integrated_20230819_invitro_noRTNormalized_downsampled_all",
+               "GL261_integrated_20230819_preinf_noRTNormalized_downsampled_sorted")
+OUTPUT_WD = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/"
+OUTPUT_DIR = "GL261_integrated_20230819_3Context_noRTNormalized_RTOnly_downsampled"
+NT_COLS = c("CED_non-targeting_RT_non-targeting_noRT",
+            "preinf_non-targeting_RT_non-targeting_noRT",
+            "invitro_non-targeting_RT_non-targeting_noRT")
 EXPR_CUTOFF = 0.5
 ABS_CUTOFF = 0.01
 TOP_BOT_CUTOFF = 0.01
 ADJ_P_CUTOFF = 0.05
-P_CUTOFF
 LFC_CUTOFF = 0.1
+FILTER_TO_RT = TRUE
+FILTER_TO_NORT = FALSE
 
 ##############################################################################
 ##############################################################################
 # Code
 
 # Import the DESeq outputs
+
+setwd(DESEQ_WD)
 
 data.list.all = list()
 for (dir in INPUT_DIRS) {
@@ -56,6 +65,14 @@ for (dir in INPUT_DIRS) {
     df = read.table(paste(dir, "/", i, sep = ""))
     data.list.all[[name]] = df
   }
+}
+noRT_names = grep("noRT_non-targeting_noRT", names(data.list.all))
+if (FILTER_TO_NORT) {
+  data.list = data.list.all[noRT_names]
+} else if (FILTER_TO_RT) {
+  data.list = data.list.all[-noRT_names]
+} else {
+  data.list = data.list.all
 }
 
 # Filter the dataframe by a TOP_BOT_CUTOFF to the up- and down-regulated 
@@ -166,5 +183,6 @@ deMat[is.na(deMat)] <- 0
 deMat <- deMat[, !colnames(deMat) %in% NT_COLS]
 deMatsig <- deMat[intersect(deGenesAll.padj,row.names(deMat)),]
 
+setwd(OUTPUT_WD)
 write.table(deMat, paste(OUTPUT_DIR, "/deMat_adjp05_lfc1", ".txt", sep = ""))
 write.table(deMatsig, paste(OUTPUT_DIR, "/deMatSig_adjp05_lfc1", ".txt", sep = ""))

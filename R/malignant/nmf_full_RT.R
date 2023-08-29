@@ -9,7 +9,9 @@
 # - The path to differentially expressed genes, the output of degenes.R
 # - A list of paths to outputs of deseq.R, or DElegate output
 # - The path to the base Seurat object, which should have source, cond, RT,
-#   and sgRNACond metadata
+#   and sgRNACond metadata.
+# - The path to a downsampled Seurat object which will tell us which cells
+#   to use
 # - A list of contexts to consider
 # - The condition, in this case radiation metadata desired
 # - A list of non-targeting perturbations to omit in output
@@ -56,33 +58,40 @@ library(ComplexHeatmap)
 library(colorRamp2)
 library(ggplot2)
 library(viridis)
-set.seed(NULL) # For NMF
 
 ##############################################################################
 ##############################################################################
 # Inputs:
 
-PATH_TO_DE_GENES = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/GL261_integrated_20230729_3Context_noRTNormalized_RTOnly/deMatSig_adjp05_lfc01.txt"
-PATHS_TO_LFC = c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_invitro_noRTNormalized_all",
-                 "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_preinf_noRTNormalized_sorted",
-                 "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_ced_noRTNormalized_all")
+PATH_TO_DE_GENES = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/GL261_integrated_20230819_3Context_noRTNormalized_RTOnly_downsampled/deMatSig_adjp05_lfc01.txt"
+PATHS_TO_LFC = c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230819_ced_noRTNormalized_downsampled_all",
+                 "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230819_invitro_noRTNormalized_downsampled_all",
+                 "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230819_preinf_noRTNormalized_downsampled_sorted")
+# PATHS_TO_LFC = c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_invitro_noRTNormalized_all",
+#                  "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_preinf_noRTNormalized_sorted",
+#                  "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_ced_noRTNormalized_all")
 PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_integrated_20230619.Rds"
+PATH_TO_DOWNSAMPLED_SEURAT_OBJECT = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/downsampled_objects/GL261_integrated_downsampled_20230819.rds"
 CONTEXTS = c("invitro", "preinf", "CED")
 RT = "RT"
-NT_COLS = c("invitro_non-targeting_RT_non-targeting_noRT",
-            "preinf_non-targeting_RT_non-targeting_noRT",
-            "CED_non-targeting_RT_non-targeting_noRT")
+NT_COLS = c("non-targeting_invitro_RT",
+            "non-targeting_preinf_RT",
+            "non-targeting_CED_RT")
 NT_COLS = c("non-targeting_preinf_RT", "non-targeting_CED_RT", "non-targeting_invitro_RT")
 PERTURBS_TO_REMOVE = c("NA_RT", "NA_noRT", "non-targeting_B_RT", "non-targeting_B_noRT")
-OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/nmf/3Context_RT/noRTNormalized_RTOnly_lfc01"
+OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/nmf/3Context_RT_fullDEAndModules_downsampledLFC"
 OUTPUT_FILE_NAME = "res_list_2-40.rds"
-NCORES = 50
+NCORES = 25
 ZERO_INFLATION_PARAMETER = 0.01
 RANK = 25
 RANK_RANGE = 2:40
 NRUNS_PER_RANK = 60
-PHENOTBL = ""
-GO_CATEGORIES = ""
+SEED = 823
+set.seed(SEED)
+PHENOTBL = "/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_1+2_results_table.txt"
+GO_CATEGORIES = "/raleighlab/data1/liuj/gbm_perturb/analysis/features_48h_GL261_annot2.csv"
+COVERAGE_FILTER = 5
+DOWNSAMPLE = TRUE
 
 cat("PATH_TO_DE_GENES: ", PATH_TO_DE_GENES, "\n")
 cat("PATHS_TO_LFC: ", paste(PATHS_TO_LFC, collapse = ", "), "\n")
@@ -100,6 +109,8 @@ cat("RANK RANGE: ", RANK_RANGE, "\n")
 cat("NRUNS_PER_RANK: ", NRUNS_PER_RANK, "\n")
 cat("PHENOTBL: ", PHENOTBL, "\n")
 cat("GO CATEGORIES: ", GO_CATEGORIES, "\n")
+cat("SEED: ", SEED, "\n")
+cat("COVERAGE FILTER: ", COVERAGE_FILTER, "\n")
 
 ##############################################################################
 ##############################################################################
@@ -112,6 +123,13 @@ cat("GO CATEGORIES: ", GO_CATEGORIES, "\n")
 data.main = readRDS(PATH_TO_SEURAT_OBJECT)
 DefaultAssay(data.main) = "RNA"
 data = NormalizeData(data.main, normalization.method = "LogNormalize", scale.factor = 1e6, verbose = TRUE)
+
+data.downsampled = readRDS(PATH_TO_DOWNSAMPLED_SEURAT_OBJECT)
+downsampled_cells = colnames(data.downsampled)
+if (DOWNSAMPLE) {
+  data = subset(data, cells = downsampled_cells)
+}
+
 data = subset(data, source %in% CONTEXTS)
 data = subset(data, cond == RT)
 
@@ -124,6 +142,52 @@ deMatSig = na.omit(deMatSig)
 
 de_genes = rownames(deMatSig)
 data = subset(data, features = de_genes)
+
+# Filter for only those perturbations that have passed a coverage filter.
+
+data$sgRNAContext = paste(data$sgRNA, data$source, sep = "_")
+sgRNAContext_counts = table(data$sgRNAContext)
+data = subset(data, sgRNAContext %in% 
+                        names(sgRNAContext_counts[sgRNAContext_counts > COVERAGE_FILTER]))
+
+# Filter for only those perturbations that are represented in all three contexts.
+
+all_sgRNAContexts = unique(data$sgRNAContext)
+all_sgRNAs = unique(data$sgRNA)
+qualified_sgRNAs = c()
+for (sgRNA in all_sgRNAs) {
+  necessary_sgRNAContexts = c(
+    paste(sgRNA, "CED", sep = "_"),
+    paste(sgRNA, "invitro", sep = "_"),
+    paste(sgRNA, "preinf", sep = "_")
+  )
+  if (all(necessary_sgRNAContexts %in% all_sgRNAContexts)) {
+    qualified_sgRNAs = unique(c(qualified_sgRNAs, sgRNA))
+  }
+}
+data = subset(data, sgRNA %in% qualified_sgRNAs)
+
+# Downsample each perturbation to its minimum among all three contexts
+
+metadata_df = data@meta.data
+all_sgRNAs = unique(data$sgRNA)
+all_sgRNAContext_counts = table(data$sgRNAContext)
+cells_to_include = c()
+for (sgRNA in all_sgRNAs) {
+  sgRNAContexts = c(
+    paste(sgRNA, "CED", sep = "_"),
+    paste(sgRNA, "invitro", sep = "_"),
+    paste(sgRNA, "preinf", sep = "_")
+  )
+  min_count <- min(all_sgRNAContext_counts[sgRNAContexts])
+  for (perturb_context in sgRNAContexts) {
+    df = subset(metadata_df, sgRNAContext == perturb_context)
+    cells = rownames(df)
+    cells_to_add = sample(cells, size = min_count)
+    cells_to_include = c(cells_to_include, cells_to_add)
+  }
+}
+data = subset(data, cells = cells_to_include)
 
 # Create and then pseudobulk by sgRNAContextTreatment
 
@@ -159,7 +223,8 @@ for (directory in PATHS_TO_LFC) {
   }
 }
 noRT_indices <- grep("noRT", perturb_list, value = FALSE, ignore.case = TRUE)
-perturb_list = perturb_list[-noRT_indices]
+RT_list = perturb_list[-noRT_indices]
+perturb_list = intersect(RT_list, colnames(avg_matrix))
 avg_matrix = avg_matrix[,perturb_list]
 
 # Obtain a rank estimate by getting NMF at many different ranks.
@@ -169,7 +234,7 @@ rank_range = RANK_RANGE
 ncores = NCORES
 
 run_nmf = function(r) {
-  model = NMF::nmf(avg_matrix, r, method = "brunet", nrun = NRUNS_PER_RANK)
+  model = NMF::nmf(avg_matrix, r, method = "brunet", nrun = NRUNS_PER_RANK, seed = SEED)
 }
 res_list = mclapply(rank_range, run_nmf, mc.cores = ncores)
 saveRDS(res_list, paste(OUTPUT_DIR, OUTPUT_FILE_NAME, sep = "/"))
@@ -244,6 +309,7 @@ for (i in 1:nrow(gene_modules)) {
     module_groups[[module]] = c(module_groups[[module]], gene)
   }
 }
+all_genes = unlist(module_groups)
 
 # Label the module groups using EnrichR
 
@@ -271,8 +337,8 @@ for (i in 1:length(module_groups)) {
   ontology_groups[i, "genes"] = paste(goi, collapse = "|")
   Sys.sleep(3)
 }
-write.table(ontology_groups, paste(OUTPUT_DIR, "ontology_groups_rank25_MaxModules_2.txt", sep = "/"), sep = "\t")
-
+write.table(ontology_groups, paste(OUTPUT_DIR, "ontology_groups_rank20_MaxModules_2.txt", sep = "/"), sep = "\t")
+ontology_groups = read.table("ontology_groups_rank25_MaxModules.txt", sep = "\t")
 
 list_names = paste(ontology_groups$msigdb_term, ontology_groups$go_term, sep = "|")
 list_items <- lapply(ontology_groups$genes, function(x) strsplit(x, split = "\\|")[[1]])
@@ -291,9 +357,7 @@ for (directory in PATHS_TO_LFC) {
     data.list[[perturb]] = df
   }
 }
-
-noRT_indices <- grep("noRT", names(data.list), value = FALSE, ignore.case = TRUE)
-data.list.noRT = data.list[-noRT_indices]
+data.list.noRT = data.list[colnames(avg_matrix)]
 
 nmfMat <- ldply(lapply(data.list.noRT,function(x) x[,c("feature","log_fc")]),data.frame)
 nmfMat <- reshape(nmfMat, idvar = "feature", v.names = "log_fc",timevar = ".id", direction = "wide")
@@ -303,7 +367,7 @@ colnames(nmfMat) <- gsub("log_fc.","",colnames(nmfMat))
 nmfMat <- nmfMat[,-1]
 nmfMat[is.na(nmfMat)] <- 0
 nmfMat <- nmfMat[, !colnames(nmfMat) %in% NT_COLS]
-nmfMatsig <- nmfMat[intersect(gene_names,row.names(nmfMat)),]
+nmfMatsig <- nmfMat[intersect(all_genes,row.names(nmfMat)),]
 nmfMatsig = as.matrix(nmfMatsig)
 
 # Plot a context separated heatmap with annotations.
@@ -353,13 +417,13 @@ module_means = lapply(enrichr_groups, function(g) {
 })
 expr_matrix = do.call(rbind, module_means)
 colnames(expr_matrix) = sapply(strsplit(colnames(expr_matrix), "_"), function(x) paste(x[2], x[1], sep="_"))
-write.table(expr_matrix, paste(OUTPUT_DIR, "output_matrix_lognormalized_lfc_rank25_MaxModules.txt", sep = "/"), sep = "\t")
+write.table(expr_matrix, paste(OUTPUT_DIR, "output_matrix_lognormalized_lfc_rank25_MaxModules_downsampled.txt", sep = "/"), sep = "\t")
 
 # Plot the heatmap
 
 poi = colnames(expr_matrix)
 ht = Heatmap(expr_matrix,
-        name = "Log Fold Change Matrix Clustered on Rank-25 NMF",
+        name = "Log Fold Change Matrix Clustered on Rank-25 NMF - Downsampled",
         col = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
         top_annotation = HeatmapAnnotation(gamma = anno_barplot(as.numeric(tblAnnot[poi,"gamma"]), bar_width = 0.9),
                                            tau = anno_barplot(as.numeric(tblAnnot[poi,"tau"]), bar_width = 0.9),
@@ -385,7 +449,7 @@ ht = Heatmap(expr_matrix,
         width = ncol(expr_matrix)*unit(4, "mm"),
         height = nrow(expr_matrix)*unit(4, "mm"),
 )
-pdf(paste(OUTPUT_DIR, "output_matrix_lognormalized_lfc_rank25_MaxModules_range1_2.pdf", sep = "/"),
+pdf(paste(OUTPUT_DIR, "output_matrix_lognormalized_lfc_rank25_MaxModules_range1_downsampled_2.pdf", sep = "/"),
     width=35,
     height=19,
     useDingbats=FALSE)
