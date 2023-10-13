@@ -1,0 +1,244 @@
+# R-GSEA
+
+Import libraries
+
+```{r}
+library(Seurat)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(knitr)
+library(msigdbr)
+library(fgsea)
+library(dplyr)
+library(data.table)
+library(ggplot2)
+library(grid)
+library(ComplexHeatmap)
+library(colorRamp2)
+```
+
+Define a bunch of constants.
+
+```{r}
+INPUT_DIRS <- c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_clean_outputs/deseq/noRTNormalized")
+OUTPUT_DIR <- "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_explore_outputs/gsea"
+PATH_TO_SEURAT_OBJECT <- "/raleighlab/data1/liuj/gbm_perturb/analysis/GBM43_1_malignant_only_annotated_20230817.Rds"
+WORKING_DIR <- "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_explore_outputs/gsea/noRTNormalized"
+setwd(WORKING_DIR)
+```
+
+Import the DESeq output
+
+```{r}
+data.list <- list()
+for (dir in INPUT_DIRS) {
+  file_names <- list.files(dir)
+  for (i in file_names) {
+    name <- gsub(".csv", "", i)
+    df <- read.table(paste(dir, "/", i, sep = ""))
+    data.list[[name]] <- df
+  }
+}
+```
+
+For each DESeq output, prepare an ordered gene set by LFC that we will use for gene set enrichment analysis. Note that we remove the GRCh38- prefix from all human genes and remove any genes that have an NA LFC. We also change from gene symbol to ENSEMBL gene ID and remove unmappable symbols, averaging out the LFCs for multiple symbols that map to the same ENSEMBL gene ID.
+
+```{r}
+ranked_gene_set_list <- list()
+for (name in names(data.list)) {
+  cat("Processing", name, "\n")
+  
+  deseq_table <- data.list[[name]]
+  deseq_table$feature <- gsub("GRCh38-", "", deseq_table$feature)
+  mapping <- mapIds(org.Hs.eg.db, keys = deseq_table$feature,
+                      column = "ENSEMBL", keytype = "SYMBOL")
+  deseq_table$ensembl <- unlist(mapping)
+  deseq_table <- subset(deseq_table, !is.na(deseq_table$ensembl))
+  deseq_table <- deseq_table[!is.na(deseq_table$log_fc), ]
+  
+  # Group by unique ensembl ID and average
+  deseq_table <- deseq_table %>%
+    group_by(ensembl) %>%
+    summarize(log_fc = mean(log_fc))
+  deseq_table <- deseq_table[order(-deseq_table$log_fc), ]
+  
+  # Generate a ranked list
+  gene_list <- deseq_table$log_fc
+  gene_names <- deseq_table$ensembl
+  names(gene_list) <- gene_names
+  ranked_gene_set_list[[name]] <- gene_list
+}
+```
+
+Run GSEA using msigdbr and fgsea
+
+```{r}
+msigdbr_df <- msigdbr(species = "Homo sapiens", category = "H")
+msigdbr_list = split(x = msigdbr_df$ensembl_gene, f = msigdbr_df$gs_name)
+
+fgsea.output.list <- list()
+for (name in names(ranked_gene_set_list)) {
+  gsea_results <- fgsea(pathways = msigdbr_list, stats = ranked_gene_set_list[[name]],
+                        maxSize = 500, eps = 0.0) # allow arbitrarily low p-values
+  fgsea_output_list[[name]] <- gsea_results
+}
+saveRDS(fgsea.output.list, paste(WORKING_DIR, "fgsea_ensembl_ontology_list.rds", sep = "/"))
+```
+
+Run the same MSigDB hallmark with the GSEA package instead of using fgsea. Note that the underlying implementation should be the same.
+
+```{r}
+hallmark_term_to_gene <- msigdbr(species = "Homo sapiens", category = "H") %>% 
+  dplyr::select(gs_name, ensembl_gene)
+hallmark.msigdb.ontology.list <- list()
+for (name in names(ranked_gene_set_list)) {
+  gsea <- GSEA(ranked_gene_set_list[[name]], 
+               TERM2GENE = hallmark_term_to_gene, pvalueCutoff = 1.0)
+  hallmark.msigdb.ontology.list[[name]] <- gsea
+}
+saveRDS(hallmark.msigdb.ontology.list, file = paste(WORKING_DIR, "hallmark_ontology_list.rds", sep = "/"))
+```
+
+Plot out example results for PRKDC.
+
+```{r}
+
+plotEnrichment(msigdbr_list[["HALLMARK_KRAS_SIGNALING_DN"]],
+               ranked_gene_set_list[["PRKDC_noRT_non-targeting_noRT"]]) + labs(title="Hallmark KRAS Signaling Downregulation")
+```
+
+```{r}
+fgseaRes <- fgsea.output.list$`non-targeting_RT_non-targeting_noRT`
+topPathwaysUp<- fgseaRes[fgseaRes$ES > 0, ][order(fgseaRes[fgseaRes$ES > 0, ]$NES, decreasing = TRUE)[1:10], "pathway"]
+topPathwaysDown <- fgseaRes[fgseaRes$ES < 0, ][order(fgseaRes[fgseaRes$ES < 0, ]$NES)[1:10], "pathway"]
+topPathways <- unlist(c(topPathwaysUp, rev(topPathwaysDown)))
+pdf(file=paste(WORKING_DIR, "GSEA_top_10_ES_ntRT.pdf", sep = "/"),width = 8,height = 4)
+plotGseaTable(msigdbr_list[topPathways], ranked_gene_set_list$`non-targeting_RT_non-targeting_noRT`, fgseaRes, gseaParam=0.5)
+dev.off()
+```
+
+One of the questions that we're trying to answer is whether or not there's a concrete upregulation/downregulation when it comes to the non-targeting control in the presence of radiation, especially as compared to PRKDC (a particular gene we're interested in) and CENPT (a particularly strong phenotype gene according to our NMF plots). Let's take a look at what those plots look like:
+
+```{r}
+# Plot for non-targeting_RT
+fgseaRes <- fgsea.output.list$`non-targeting_RT_non-targeting_noRT`
+topPathwaysUp<- fgseaRes[fgseaRes$ES > 0, ][order(fgseaRes[fgseaRes$ES > 0, ]$NES, decreasing = TRUE)[1:10], "pathway"]
+topPathwaysDown <- fgseaRes[fgseaRes$ES < 0, ][order(fgseaRes[fgseaRes$ES < 0, ]$NES)[1:10], "pathway"]
+topPathways <- unlist(c(topPathwaysUp, rev(topPathwaysDown)))
+plot_grob <- plotGseaTable(msigdbr_list[topPathways], ranked_gene_set_list$`non-targeting_RT_non-targeting_noRT`, fgseaRes, gseaParam=0.5) 
+grid.newpage()
+grid.draw(plot_grob)
+grid.text("Non-targeting RT vs. non-targeting noRT, top 10 pathways by pos/neg NES", x = unit(0, "npc"), y = unit(1, "npc"), gp = gpar(fontsize = 10))
+```
+
+```{r}
+# Plot for PRKDC_RT and PRKDC-noRT
+print("Here's RT")
+fgseaRes <- fgsea.output.list$`PRKDC_RT_non-targeting_noRT`
+topPathwaysUp<- fgseaRes[fgseaRes$ES > 0, ][order(fgseaRes[fgseaRes$ES > 0, ]$NES, decreasing = TRUE)[1:10], "pathway"]
+topPathwaysDown <- fgseaRes[fgseaRes$ES < 0, ][order(fgseaRes[fgseaRes$ES < 0, ]$NES)[1:10], "pathway"]
+topPathways <- unlist(c(topPathwaysUp, rev(topPathwaysDown)))
+plotGseaTable(msigdbr_list[topPathways], ranked_gene_set_list$`PRKDC_RT_non-targeting_noRT`, fgseaRes, gseaParam=0.5)
+
+print("Here's noRT")
+fgseaRes <- fgsea.output.list$`PRKDC_noRT_non-targeting_noRT`
+topPathwaysUp<- fgseaRes[fgseaRes$ES > 0, ][order(fgseaRes[fgseaRes$ES > 0, ]$NES, decreasing = TRUE)[1:10], "pathway"]
+topPathwaysDown <- fgseaRes[fgseaRes$ES < 0, ][order(fgseaRes[fgseaRes$ES < 0, ]$NES)[1:10], "pathway"]
+topPathways <- unlist(c(topPathwaysUp, rev(topPathwaysDown)))
+plotGseaTable(msigdbr_list[topPathways], ranked_gene_set_list$`PRKDC_noRT_non-targeting_noRT`, fgseaRes, gseaParam=0.5)
+```
+
+For CENPT, note that we rank by pure enrichment score because there are some sketchy p-values that make it not possible to calculate an NES. It's interesting to note that when it comes to CENPT, there's very few differences between what gene sets are enriched under RT conditions and not.
+
+```{r}
+# Plot for CENPT_RT and CENPT_noRT
+print("Here's RT")
+fgseaRes <- fgsea.output.list$`CENPT_RT_non-targeting_noRT`
+topPathwaysUp<- fgseaRes[fgseaRes$ES > 0, ][order(fgseaRes[fgseaRes$ES > 0, ]$ES, decreasing = TRUE)[1:10], "pathway"]
+topPathwaysDown <- fgseaRes[fgseaRes$ES < 0, ][order(fgseaRes[fgseaRes$ES < 0, ]$ES)[1:10], "pathway"]
+topPathways <- unlist(c(topPathwaysUp, rev(topPathwaysDown)))
+plotGseaTable(msigdbr_list[topPathways], ranked_gene_set_list$`CENPT_RT_non-targeting_noRT`, fgseaRes, gseaParam=0.5)
+
+print("Here's noRT")
+fgseaRes <- fgsea.output.list$`CENPT_noRT_non-targeting_noRT`
+topPathwaysUp<- fgseaRes[fgseaRes$ES > 0, ][order(fgseaRes[fgseaRes$ES > 0, ]$ES, decreasing = TRUE)[1:10], "pathway"]
+topPathwaysDown <- fgseaRes[fgseaRes$ES < 0, ][order(fgseaRes[fgseaRes$ES < 0, ]$ES)[1:10], "pathway"]
+topPathways <- unlist(c(topPathwaysUp, rev(topPathwaysDown)))
+plotGseaTable(msigdbr_list[topPathways], ranked_gene_set_list$`CENPT_noRT_non-targeting_noRT`, fgseaRes, gseaParam=0.5)
+```
+
+Interestingly enough, the PRKDC results seem to be opposite those for GL261 for noRT. Let's take a look at the actual gene log fold changes for inteferon gamma and inflammatory responses.
+
+```{r}
+# Load the LFCs from GL261
+gl261_lfcs <- read.table("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_ced_noRTNormalized_all/CED_Prkdc_noRT_non-targeting_noRT.csv")
+gl261_lfcs$feature <- toupper(gl261_lfcs$feature)
+
+# Load the LFCs from GBM43
+gbm43_lfcs <- data.list$`PRKDC_noRT_non-targeting_noRT`
+gbm43_lfcs$feature <- gsub("GRCh38-", "", gbm43_lfcs$feature)
+
+# Fetch the genes in question
+msigdbr_df <- msigdbr(species = "Homo sapiens", category = "H")
+msigdbr_list <- split(x = msigdbr_df$gene_symbol, f = msigdbr_df$gs_name)
+genes <- msigdbr_list$HALLMARK_INTERFERON_GAMMA_RESPONSE
+print(length(genes))
+
+gl261_lfcs <- subset(gl261_lfcs, gl261_lfcs$feature %in% genes)[,c("feature", "log_fc",
+                                                                  "padj")]
+gbm43_lfcs <- subset(gbm43_lfcs, gbm43_lfcs$feature %in% genes)[,c("feature", "log_fc",
+                                                                  "padj")]
+combined_df <- merge(gl261_lfcs, gbm43_lfcs, by="feature")
+combined_df <- subset(combined_df, !is.na(combined_df$log_fc.x) & 
+                        !is.na(combined_df$log_fc.y))
+cor(combined_df$log_fc.y, combined_df$log_fc.x)
+
+```
+
+We get that correlation for non-NA LFCs for the INTERFERON_GAMMA_RESPONSE gene set is -0.10423, and for the INFLAMMATORY_RESPONSE is -0.10300. Note that out of the genes that were used to identify the INTERFERON_GAMMA_RESPONSE cluster in the NMF, only CCL5 is shared between the GBM43 and GL261 data.
+
+Run GSEA for gene ontology modules for clusterProfiler
+
+```{r}
+bp.ontology.list <- list()
+for (name in names(ranked_gene_set_list)) {
+  cat("Processing", name)
+  gse <- gseGO(
+    ranked_gene_set_list[[name]],
+    ont = "BP",
+    keyType = "ENSEMBL",
+    OrgDb = org.Hs.eg.db,
+    eps = 1e-300,
+    pvalueCutoff = 1.0
+  )
+  bp.ontology.list[[name]] <- gse
+}
+saveRDS(bp.ontology.list, file = paste(WORKING_DIR, "bp_ontology_list.rds", sep = "/"))
+```
+
+Let's generate a heatmap that includes all of the outputs across all of the Hallmark gene sets. To do so, we want to convert all of our outputs into a single dataframe.
+
+```{r}
+extracted_cols <- lapply(names(fgsea.output.list), function(name) {
+  col <- fgsea.output.list[[name]]$ES
+  names(col) <- fgsea.output.list[[name]]$pathway
+  col
+})
+combined_df <- do.call(cbind, extracted_cols)
+colnames(combined_df) <- names(fgsea.output.list)
+
+ht = Heatmap(combined_df,
+        name = "Enrichment Scores across Perturbations and Conditions",
+        col = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
+        cluster_column_slices = FALSE,
+        cluster_columns = TRUE,
+        width = ncol(combined_df)*unit(4, "mm"),
+        height = nrow(combined_df)*unit(4, "mm"),
+)
+pdf(paste(OUTPUT_DIR, "enrichment_combined_matrix.pdf", sep = "/"),
+    width=35,
+    height=19,
+    useDingbats=FALSE)
+draw(ht, heatmap_legend_side = "top", annotation_legend_side = "top")
+dev.off()
+```

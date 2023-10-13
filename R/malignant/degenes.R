@@ -32,15 +32,16 @@ library(dplyr)
 ##############################################################################
 # Inputs:
 
-INPUT_DIRS = c("")
-OUTPUT_DIR = ""
+INPUT_DIRS = c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_clean_outputs/deseq/condNormalized")
+OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_clean_outputs/degenes/condNormalized_RTOnly"
 NT_COLS = c("")
 EXPR_CUTOFF = 0.5
 ABS_CUTOFF = 0.01
 TOP_BOT_CUTOFF = 0.01
 ADJ_P_CUTOFF = 0.05
-P_CUTOFF
+P_CUTOFF = 0.01
 LFC_CUTOFF = 0.1
+RT = "RT"
 
 ##############################################################################
 ##############################################################################
@@ -48,14 +49,23 @@ LFC_CUTOFF = 0.1
 
 # Import the DESeq outputs
 
-data.list.all = list()
+data.list = list()
 for (dir in INPUT_DIRS) {
   file_names = list.files(dir)
   for (i in file_names) {
     name = gsub(".csv", "", i)
     df = read.table(paste(dir, "/", i, sep = ""))
-    data.list.all[[name]] = df
+    data.list[[name]] = df
   }
+}
+
+# Filter by RT condition
+
+noRT_indices <- grep("noRT_non-targeting_noRT", names(data.list), value = FALSE, ignore.case = TRUE)
+if (RT == "RT") {
+  data.list = data.list[-noRT_indices]
+} else {
+  data.list = data.list[noRT_indices]
 }
 
 # Filter the dataframe by a TOP_BOT_CUTOFF to the up- and down-regulated 
@@ -63,58 +73,58 @@ for (dir in INPUT_DIRS) {
 # and admit only those genes in the top EXPR_CUTOFF of expression as measured 
 # byDESeq2's baseMean.
 
-deGenesAll.topBot = unique(unlist(lapply(data.list, function(x) {
-  x = x[!is.na(x$log_fc), ]
-  x = x[!is.na(x$pvalue), ]
-  x = x[!is.na(x$padj), ]
-  
-  n = nrow(x)
-  cutoff_n = round(n * EXPR_CUTOFF)
-  x = x[order(x$ave_expr),]
-  x = tail(x, cutoff_n)
-  print(paste("Minimum ave_expr of allowed genes: ", min(x$ave_expr)))
-
-  # Implement p/absolute-value threshold
-  
-  x$threshold_p = abs(x$log_fc) * -log10(x$pvalue)
-  x$threshold_adjp = abs(x$log_fc) * -log10(x$padj)
-
-  n = nrow(x)
-  cutoff_n = round(n * TOP_BOT_CUTOFF)
-  x = x[order(x$log_fc),]
-  top_genes = tail(x, cutoff_n)
-  bottom_genes = head(x, cutoff_n)
-  print(paste("Minimum log_fc of top genes: ", min(top_genes$log_fc)))
-  print(paste("Maximum log_fc of bottom genes: ", max(bottom_genes$log_fc)))
-  print(length(c(top_genes$feature, bottom_genes$feature)))
-  c(top_genes$feature, bottom_genes$feature)  # Return the combined vector
-})))
-
-# Filter the dataframe to include the top ABS_CUTOFF of genes by absolute value
-# of log fold change. Admit only genes in the top EXPR_CUTOFF of expression
-# as measured by DESeq2's baseMean.
-
-deGenesAll.abs = unique(unlist(lapply(data.list, function(x) {
-  x = x[!is.na(x$log_fc), ]
-  
-  n = nrow(x)
-  cutoff_n = round(n * EXPR_CUTOFF)
-  x = x[order(x$ave_expr),]
-  x = tail(x, cutoff_n)
-  print(paste("Minimum ave_expr of allowed genes: ", min(x$ave_expr)))
-  
-  n = nrow(x)
-  cutoff_n = round(n * ABS_CUTOFF)
-  print(cutoff_n)
-  x = x[order(abs(x$log_fc)),]
-  top_genes = tail(x, cutoff_n)
-  print(paste("Minimum absolute log_fc of top genes: ", min(abs(top_genes$log_fc))))
-  print(paste("Maximum absolute log_fc of top genes: ", max(abs(top_genes$log_fc))))
-  print(quantile(top_genes$log_fc))
-  print(length(top_genes$feature))
-  c(top_genes$feature)
-
-})))
+# deGenesAll.topBot = unique(unlist(lapply(data.list, function(x) {
+#   x = x[!is.na(x$log_fc), ]
+#   x = x[!is.na(x$pvalue), ]
+#   x = x[!is.na(x$padj), ]
+#   
+#   n = nrow(x)
+#   cutoff_n = round(n * EXPR_CUTOFF)
+#   x = x[order(x$ave_expr),]
+#   x = tail(x, cutoff_n)
+#   print(paste("Minimum ave_expr of allowed genes: ", min(x$ave_expr)))
+# 
+#   # Implement p/absolute-value threshold
+#   
+#   x$threshold_p = abs(x$log_fc) * -log10(x$pvalue)
+#   x$threshold_adjp = abs(x$log_fc) * -log10(x$padj)
+# 
+#   n = nrow(x)
+#   cutoff_n = round(n * TOP_BOT_CUTOFF)
+#   x = x[order(x$log_fc),]
+#   top_genes = tail(x, cutoff_n)
+#   bottom_genes = head(x, cutoff_n)
+#   print(paste("Minimum log_fc of top genes: ", min(top_genes$log_fc)))
+#   print(paste("Maximum log_fc of bottom genes: ", max(bottom_genes$log_fc)))
+#   print(length(c(top_genes$feature, bottom_genes$feature)))
+#   c(top_genes$feature, bottom_genes$feature)  # Return the combined vector
+# })))
+# 
+# # Filter the dataframe to include the top ABS_CUTOFF of genes by absolute value
+# # of log fold change. Admit only genes in the top EXPR_CUTOFF of expression
+# # as measured by DESeq2's baseMean.
+# 
+# deGenesAll.abs = unique(unlist(lapply(data.list, function(x) {
+#   x = x[!is.na(x$log_fc), ]
+#   
+#   n = nrow(x)
+#   cutoff_n = round(n * EXPR_CUTOFF)
+#   x = x[order(x$ave_expr),]
+#   x = tail(x, cutoff_n)
+#   print(paste("Minimum ave_expr of allowed genes: ", min(x$ave_expr)))
+#   
+#   n = nrow(x)
+#   cutoff_n = round(n * ABS_CUTOFF)
+#   print(cutoff_n)
+#   x = x[order(abs(x$log_fc)),]
+#   top_genes = tail(x, cutoff_n)
+#   print(paste("Minimum absolute log_fc of top genes: ", min(abs(top_genes$log_fc))))
+#   print(paste("Maximum absolute log_fc of top genes: ", max(abs(top_genes$log_fc))))
+#   print(quantile(top_genes$log_fc))
+#   print(length(top_genes$feature))
+#   c(top_genes$feature)
+# 
+# })))
 
 # Filter the dataframes based on ADJ_P_CUTOFF and LFC_CUTOFF. Include
 # no baseMean cutoff.
@@ -130,31 +140,31 @@ deGenesAll.padj = unique(unlist(lapply(data.list, function(x) {
 
 # Build log2FC matrices for the topBot, Abs, and LFC/adjp cutoffs.
 
-deMat <- ldply(lapply(data.list,function(x) x[,c("feature","log_fc")]),data.frame)
-deMat <- reshape(deMat, idvar = "feature", v.names = "log_fc",timevar = ".id", direction = "wide")
-deMat <- deMat[!is.na(deMat$feature),]
-row.names(deMat) <- deMat$feature
-colnames(deMat) <- gsub("log_fc.","",colnames(deMat))
-deMat <- deMat[,-1]
-deMat[is.na(deMat)] <- 0
-deMat <- deMat[, !colnames(deMat) %in% NT_COLS]
-deMatsig <- deMat[intersect(deGenesAll.topBot,row.names(deMat)),]
-
-write.table(deMat, paste(OUTPUT_DIR, "/deMat_topBot", TOP_BOT_CUTOFF, ".txt", sep = ""))
-write.table(deMatsig, paste(OUTPUT_DIR, "/deMatSig_topBot", TOP_BOT_CUTOFF, ".txt", sep = ""))
-
-deMat <- ldply(lapply(data.list,function(x) x[,c("feature","log_fc")]),data.frame)
-deMat <- reshape(deMat, idvar = "feature", v.names = "log_fc",timevar = ".id", direction = "wide")
-deMat <- deMat[!is.na(deMat$feature),]
-row.names(deMat) <- deMat$feature
-colnames(deMat) <- gsub("log_fc.","",colnames(deMat))
-deMat <- deMat[,-1]
-deMat[is.na(deMat)] <- 0
-deMat <- deMat[, !colnames(deMat) %in% NT_COLS]
-deMatsig <- deMat[intersect(deGenesAll.abs,row.names(deMat)),]
-
-write.table(deMat, paste(OUTPUT_DIR, "/deMat_abs", ABS_CUTOFF, ".txt", sep = ""))
-write.table(deMatsig, paste(OUTPUT_DIR, "/deMatSig_abs", ABS_CUTOFF, ".txt", sep = ""))
+# deMat <- ldply(lapply(data.list,function(x) x[,c("feature","log_fc")]),data.frame)
+# deMat <- reshape(deMat, idvar = "feature", v.names = "log_fc",timevar = ".id", direction = "wide")
+# deMat <- deMat[!is.na(deMat$feature),]
+# row.names(deMat) <- deMat$feature
+# colnames(deMat) <- gsub("log_fc.","",colnames(deMat))
+# deMat <- deMat[,-1]
+# deMat[is.na(deMat)] <- 0
+# deMat <- deMat[, !colnames(deMat) %in% NT_COLS]
+# deMatsig <- deMat[intersect(deGenesAll.topBot,row.names(deMat)),]
+# 
+# write.table(deMat, paste(OUTPUT_DIR, "/deMat_topBot", TOP_BOT_CUTOFF, ".txt", sep = ""))
+# write.table(deMatsig, paste(OUTPUT_DIR, "/deMatSig_topBot", TOP_BOT_CUTOFF, ".txt", sep = ""))
+# 
+# deMat <- ldply(lapply(data.list,function(x) x[,c("feature","log_fc")]),data.frame)
+# deMat <- reshape(deMat, idvar = "feature", v.names = "log_fc",timevar = ".id", direction = "wide")
+# deMat <- deMat[!is.na(deMat$feature),]
+# row.names(deMat) <- deMat$feature
+# colnames(deMat) <- gsub("log_fc.","",colnames(deMat))
+# deMat <- deMat[,-1]
+# deMat[is.na(deMat)] <- 0
+# deMat <- deMat[, !colnames(deMat) %in% NT_COLS]
+# deMatsig <- deMat[intersect(deGenesAll.abs,row.names(deMat)),]
+# 
+# write.table(deMat, paste(OUTPUT_DIR, "/deMat_abs", ABS_CUTOFF, ".txt", sep = ""))
+# write.table(deMatsig, paste(OUTPUT_DIR, "/deMatSig_abs", ABS_CUTOFF, ".txt", sep = ""))
 
 deMat <- ldply(lapply(data.list,function(x) x[,c("feature","log_fc")]),data.frame)
 deMat <- reshape(deMat, idvar = "feature", v.names = "log_fc",timevar = ".id", direction = "wide")
@@ -166,5 +176,5 @@ deMat[is.na(deMat)] <- 0
 deMat <- deMat[, !colnames(deMat) %in% NT_COLS]
 deMatsig <- deMat[intersect(deGenesAll.padj,row.names(deMat)),]
 
-write.table(deMat, paste(OUTPUT_DIR, "/deMat_adjp05_lfc1", ".txt", sep = ""))
-write.table(deMatsig, paste(OUTPUT_DIR, "/deMatSig_adjp05_lfc1", ".txt", sep = ""))
+write.table(deMat, paste(OUTPUT_DIR, "/deMat_adjp05_lfc01", ".txt", sep = ""))
+write.table(deMatsig, paste(OUTPUT_DIR, "/deMatSig_adjp05_lfc01", ".txt", sep = ""))

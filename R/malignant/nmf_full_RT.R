@@ -62,32 +62,27 @@ set.seed(NULL) # For NMF
 ##############################################################################
 # Inputs:
 
-PATH_TO_DE_GENES = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/GL261_integrated_20230729_3Context_noRTNormalized_RTOnly/deMatSig_adjp05_lfc01.txt"
-PATHS_TO_LFC = c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_invitro_noRTNormalized_all",
-                 "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_preinf_noRTNormalized_sorted",
-                 "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_ced_noRTNormalized_all")
-PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_integrated_20230619.Rds"
-CONTEXTS = c("invitro", "preinf", "CED")
+PATH_TO_DE_GENES = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_clean_outputs/degenes/condNormalized_RTOnly/deMatSig_adjp05_lfc01.txt"
+PATHS_TO_LFC = c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_clean_outputs/deseq/condNormalized")
+PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GBM43_1_malignant_only_annotated_20230817.Rds"
 RT = "RT"
-NT_COLS = c("invitro_non-targeting_RT_non-targeting_noRT",
-            "preinf_non-targeting_RT_non-targeting_noRT",
-            "CED_non-targeting_RT_non-targeting_noRT")
-NT_COLS = c("non-targeting_preinf_RT", "non-targeting_CED_RT", "non-targeting_invitro_RT")
+NT_COLS = c("non-targeting_RT_non-targeting_noRT")
 PERTURBS_TO_REMOVE = c("NA_RT", "NA_noRT", "non-targeting_B_RT", "non-targeting_B_noRT")
-OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/nmf/3Context_RT/noRTNormalized_RTOnly_lfc01"
-OUTPUT_FILE_NAME = "res_list_2-40.rds"
+OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_clean_outputs/nmf/condNormalized_RTOnly"
+OUTPUT_FILE_NAME = "res_list_2-40_01.rds"
 NCORES = 50
 ZERO_INFLATION_PARAMETER = 0.01
+MODULE_MEMBERSHIP_PERCENTILE_PARAMETER = 0.9
 RANK = 25
 RANK_RANGE = 2:40
 NRUNS_PER_RANK = 60
-PHENOTBL = ""
+PHENOTBL = '/raleighlab/data1/liuj/crispr_screens/hs_rt_integrated/GBM43_LN18_T98G_zim3_phenotable.txt'
 GO_CATEGORIES = ""
+MINIMUM_COVERAGE = 5
 
 cat("PATH_TO_DE_GENES: ", PATH_TO_DE_GENES, "\n")
 cat("PATHS_TO_LFC: ", paste(PATHS_TO_LFC, collapse = ", "), "\n")
 cat("PATH_TO_SEURAT_OBJECT: ", PATH_TO_SEURAT_OBJECT, "\n")
-cat("CONTEXTS: ", paste(CONTEXTS, collapse = ", "), "\n")
 cat("RT: ", RT, "\n")
 cat("NT_COLS: ", paste(NT_COLS, collapse = ", "), "\n")
 cat("PERTURBS_TO_REMOVE: ", paste(PERTURBS_TO_REMOVE, collapse = ", "), "\n")
@@ -112,22 +107,19 @@ cat("GO CATEGORIES: ", GO_CATEGORIES, "\n")
 data.main = readRDS(PATH_TO_SEURAT_OBJECT)
 DefaultAssay(data.main) = "RNA"
 data = NormalizeData(data.main, normalization.method = "LogNormalize", scale.factor = 1e6, verbose = TRUE)
-data = subset(data, source %in% CONTEXTS)
 data = subset(data, cond == RT)
 
-sgRNAConds = unique(data$sgRNACond)
-to_keep = setdiff(sgRNAConds, PERTURBS_TO_REMOVE)
-data = subset(data, sgRNACond %in% to_keep)
-
-deMatSig = read.table(PATH_TO_DE_GENES, header = TRUE)
-deMatSig = na.omit(deMatSig)
-
+deMatSig = read.table(PATH_TO_DE_GENES)
 de_genes = rownames(deMatSig)
 data = subset(data, features = de_genes)
 
-# Create and then pseudobulk by sgRNAContextTreatment
+# Screen for minimum coverage
 
-data$sgRNAContextTreatment = paste(data$sgRNA, data$source, data$cond, sep = "_")
+sgRNACond_counts = table(data$sgRNACond)
+data = subset(data, sgRNACond %in% 
+                names(sgRNACond_counts[sgRNACond_counts > MINIMUM_COVERAGE]))
+
+# Pseudobulk by sgRNACond
 
 counts_data = as.matrix(GetAssayData(data))
 metadata = data@meta.data
@@ -136,11 +128,11 @@ expr_df$gene = rownames(expr_df)
 expr_long = tidyr::pivot_longer(expr_df, -gene, 
                                 names_to = "cell_barcode",
                                 values_to = "expression")
-expr_long$sgRNAContextTreatment = metadata[expr_long$cell_barcode, "sgRNAContextTreatment"]
+expr_long$sgRNACond = metadata[expr_long$cell_barcode, "sgRNACond"]
 avg_data = expr_long %>%
-  dplyr::group_by(gene, sgRNAContextTreatment) %>%
+  dplyr::group_by(gene, sgRNACond) %>%
   dplyr::summarise(mean_expression = mean(expression, na.rm = TRUE))
-avg_matrix = tidyr::pivot_wider(avg_data, names_from = sgRNAContextTreatment, values_from = mean_expression)
+avg_matrix = tidyr::pivot_wider(avg_data, names_from = sgRNACond, values_from = mean_expression)
 avg_matrix = as.data.frame(avg_matrix)
 rownames(avg_matrix) = avg_matrix$gene
 avg_matrix = as.matrix(avg_matrix[, -1])
@@ -154,12 +146,14 @@ for (directory in PATHS_TO_LFC) {
   file_names = list.files(directory)
   for (i in file_names) {
     split_string = strsplit(i, "_")[[1]]
-    perturb = paste(split_string[2], split_string[1], split_string[3], sep = "_")
+    perturb = paste(split_string[1], split_string[2], sep = "_")
     perturb_list = c(perturb_list, perturb)
   }
 }
 noRT_indices <- grep("noRT", perturb_list, value = FALSE, ignore.case = TRUE)
 perturb_list = perturb_list[-noRT_indices]
+control_index = grep("non-targeting_RT", perturb_list)
+# perturb_list = perturb_list[-control_index]
 avg_matrix = avg_matrix[,perturb_list]
 
 # Obtain a rank estimate by getting NMF at many different ranks.
@@ -217,9 +211,17 @@ W = basis(res)
 row_means <- rowMeans(W)
 W <- W[row_means >= ZERO_INFLATION_PARAMETER, ]
 
+
 # Extract gene names into gene modules
 
+remove_organism_annotations = function(gene_names) {
+  gene_names = gsub("GRCh38-", "", gene_names)
+  gene_names = gsub("mm10---", "", gene_names)
+  return(gene_names)
+}
+
 gene_names = rownames(W)
+gene_names = remove_organism_annotations(gene_names)
 W.df = as.data.frame(W)
 gene_modules <- data.frame(gene = gene_names, modules = NA)
 for (i in 1:nrow(W.df)) {
@@ -232,6 +234,7 @@ for (i in 1:nrow(W.df)) {
 
 genes_to_remove = setdiff(rownames(data@assays$RNA@counts),
                           rownames(data@assays$SCT@counts))
+genes_to_remove = remove_organism_annotations(genes_to_remove)
 module_groups = list()
 for (i in 1:nrow(gene_modules)) {
   gene = gene_modules[i, "gene"]
@@ -271,12 +274,13 @@ for (i in 1:length(module_groups)) {
   ontology_groups[i, "genes"] = paste(goi, collapse = "|")
   Sys.sleep(3)
 }
-write.table(ontology_groups, paste(OUTPUT_DIR, "ontology_groups_rank25_MaxModules_2.txt", sep = "/"), sep = "\t")
-
+write.table(ontology_groups, paste(OUTPUT_DIR, "ontology_groups_rank25_MaxModules.txt", sep = "/"), sep = "\t")
+ontology_groups = read.table(paste(OUTPUT_DIR, "ontology_groups_rank25_MaxModules.txt", sep = "/"), sep = "\t")
 
 list_names = paste(ontology_groups$msigdb_term, ontology_groups$go_term, sep = "|")
 list_items <- lapply(ontology_groups$genes, function(x) strsplit(x, split = "\\|")[[1]])
 enrichr_groups = setNames(list_items, list_names)
+all_genes = unlist(enrichr_groups)
 
 # Generate the log fold change matrix. We keep only those rows
 # that qualify and that have genes that are in the gene_names
@@ -285,13 +289,14 @@ data.list = list()
 for (directory in PATHS_TO_LFC) {
   file_names = list.files(directory)
   for (i in file_names) {
+    print(i)
     split_string = strsplit(i, "_")[[1]]
-    perturb = paste(split_string[2], split_string[1], split_string[3], sep = "_")
+    perturb = paste(split_string[1], split_string[2], sep = "_")
     df = read.table(paste(directory, "/", i, sep = ""))
+    df$feature = remove_organism_annotations(df$feature)
     data.list[[perturb]] = df
   }
 }
-
 noRT_indices <- grep("noRT", names(data.list), value = FALSE, ignore.case = TRUE)
 data.list.noRT = data.list[-noRT_indices]
 
@@ -303,48 +308,51 @@ colnames(nmfMat) <- gsub("log_fc.","",colnames(nmfMat))
 nmfMat <- nmfMat[,-1]
 nmfMat[is.na(nmfMat)] <- 0
 nmfMat <- nmfMat[, !colnames(nmfMat) %in% NT_COLS]
-nmfMatsig <- nmfMat[intersect(gene_names,row.names(nmfMat)),]
+nmfMatsig <- nmfMat[intersect(all_genes,row.names(nmfMat)),]
 nmfMatsig = as.matrix(nmfMatsig)
 
 # Plot a context separated heatmap with annotations.
 
 phenoTbl <- read.table(PHENOTBL,sep='\t',header=TRUE,row.names=1)
-coverageTbl <- read.table('/raleighlab/data1/liuj/gbm_perturb/analysis/gbm_pdx_perturb_GL261_integrate_xfp/pdx_perturb_GL261_concordant_sgRNAs.txt',header=TRUE,sep='\t')
-coverageTblCmp <- rbind(invitronoRT = apply(coverageTbl[c("GL261_48hit_noRT_1","GL261_48hit_noRT_2"),],2,sum),
-                        invitroRT = apply(coverageTbl[c("GL261_48hit_RT_1","GL261_48hit_RT_2"),],2,sum),
-                        preinfnoRT = apply(coverageTbl[c("GL261_noRT_preinf_MACSFACS_1","GL261_noRT_preinf_MACSFACS_2","GL261_noRT_preinf_MACSFACS_3"),],2,sum),
-                        preinfRT = apply(coverageTbl[c("GL261_RT_preinf_MACSFACS_1","GL261_RT_preinf_MACSFACS_2","GL261_RT_preinf_MACSFACS_3"),],2,sum),
-                        CEDnoRT = apply(coverageTbl[c("GL261_CED_pool","GL261_noRT_CED_MACSFACS"),],2,sum),
-                        CEDRT = coverageTbl[c("GL261_RT_CED_MACSFACS"),])
-
-colnames(coverageTblCmp) <- gsub("non.targeting","NTC",colnames(coverageTblCmp))
-sgAnnot <- data.frame(row.names = colnames(coverageTblCmp), gamma = phenoTbl[colnames(coverageTblCmp),"gamma"], tau = phenoTbl[colnames(coverageTblCmp),"tau"], rho = phenoTbl[colnames(coverageTblCmp),"rho"])
-sgAnnot["non.targeting",] <- c(0,0,0)
-tblAnnot <- data.frame(row.names=colnames(nmfMatsig),
-                       sgRNA = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 1),
-                       source = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 2),
-                       cond = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 3))
-tblAnnot$sourceCond <- paste(tblAnnot$source,tblAnnot$cond,sep='')
-tblAnnot$gamma <- sgAnnot[tblAnnot$sgRNA,"gamma"]
-tblAnnot$tau <- sgAnnot[tblAnnot$sgRNA,"tau"]
-tblAnnot$rho <- sgAnnot[tblAnnot$sgRNA,"rho"]
-tblAnnot$coverage <- rep(0,nrow(tblAnnot))
-for (i in 1:nrow(tblAnnot)){
-  tryCatch({
-    tblAnnot[i,"coverage"] <- coverageTblCmp[tblAnnot[i,"sourceCond"],tblAnnot[i,"sgRNA"]]
-  }, error = function(e) {
-    print(e)
-  })
-}
-tblAnnot$sgRNACond = paste(tblAnnot$sgRNA,tblAnnot$cond,sep='_')
-
-go_categories = read.table(GO_CATEGORIES, sep = ",")
-colnames(go_categories) = c("Gene", "GO")
-rownames(go_categories) = go_categories$Gene
-tblAnnot$go_term = go_categories[tblAnnot$sgRNA, "GO"]
-rownames(tblAnnot) = paste(tblAnnot$source, tblAnnot$sgRNA, sep = "_")
-
-write.table(tblAnnot, paste(OUTPUT_DIR, "/", "RT_annotation_table.txt", sep = ""), sep = "\t")
+double_knockouts = rownames(phenoTbl)[grep("^(?:[^_]*?_-_[^-]*?){2}[^_]*$", rownames(phenoTbl))]
+phenoTbl = phenoTbl[double_knockouts,]
+rownames(phenoTbl) = phenoTbl$GBM43.target
+# coverageTbl <- read.table('/raleighlab/data1/liuj/gbm_perturb/analysis/gbm_pdx_perturb_GL261_integrate_xfp/pdx_perturb_GL261_concordant_sgRNAs.txt',header=TRUE,sep='\t')
+# coverageTblCmp <- rbind(invitronoRT = apply(coverageTbl[c("GL261_48hit_noRT_1","GL261_48hit_noRT_2"),],2,sum),
+#                         invitroRT = apply(coverageTbl[c("GL261_48hit_RT_1","GL261_48hit_RT_2"),],2,sum),
+#                         preinfnoRT = apply(coverageTbl[c("GL261_noRT_preinf_MACSFACS_1","GL261_noRT_preinf_MACSFACS_2","GL261_noRT_preinf_MACSFACS_3"),],2,sum),
+#                         preinfRT = apply(coverageTbl[c("GL261_RT_preinf_MACSFACS_1","GL261_RT_preinf_MACSFACS_2","GL261_RT_preinf_MACSFACS_3"),],2,sum),
+#                         CEDnoRT = apply(coverageTbl[c("GL261_CED_pool","GL261_noRT_CED_MACSFACS"),],2,sum),
+#                         CEDRT = coverageTbl[c("GL261_RT_CED_MACSFACS"),])
+#
+# colnames(coverageTblCmp) <- gsub("non.targeting","NTC",colnames(coverageTblCmp))
+# sgAnnot <- data.frame(row.names = colnames(coverageTblCmp), gamma = phenoTbl[colnames(coverageTblCmp),"gamma"], tau = phenoTbl[colnames(coverageTblCmp),"tau"], rho = phenoTbl[colnames(coverageTblCmp),"rho"])
+# sgAnnot["non.targeting",] <- c(0,0,0)
+# tblAnnot <- data.frame(row.names=colnames(nmfMatsig),
+#                        sgRNA = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 1),
+#                        source = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 2),
+#                        cond = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 3))
+# tblAnnot$sourceCond <- paste(tblAnnot$source,tblAnnot$cond,sep='')
+# tblAnnot$gamma <- sgAnnot[tblAnnot$sgRNA,"gamma"]
+# tblAnnot$tau <- sgAnnot[tblAnnot$sgRNA,"tau"]
+# tblAnnot$rho <- sgAnnot[tblAnnot$sgRNA,"rho"]
+# tblAnnot$coverage <- rep(0,nrow(tblAnnot))
+# for (i in 1:nrow(tblAnnot)){
+#   tryCatch({
+#     tblAnnot[i,"coverage"] <- coverageTblCmp[tblAnnot[i,"sourceCond"],tblAnnot[i,"sgRNA"]]
+#   }, error = function(e) {
+#     print(e)
+#   })
+# }
+# tblAnnot$sgRNACond = paste(tblAnnot$sgRNA,tblAnnot$cond,sep='_')
+#
+# go_categories = read.table(GO_CATEGORIES, sep = ",")
+# colnames(go_categories) = c("Gene", "GO")
+# rownames(go_categories) = go_categories$Gene
+# tblAnnot$go_term = go_categories[tblAnnot$sgRNA, "GO"]
+# rownames(tblAnnot) = paste(tblAnnot$source, tblAnnot$sgRNA, sep = "_")
+#
+# write.table(tblAnnot, paste(OUTPUT_DIR, "/", "RT_annotation_table.txt", sep = ""), sep = "\t")
 
 # Cluster the log fold changes into gene modules
 
@@ -360,32 +368,32 @@ write.table(expr_matrix, paste(OUTPUT_DIR, "output_matrix_lognormalized_lfc_rank
 poi = colnames(expr_matrix)
 ht = Heatmap(expr_matrix,
         name = "Log Fold Change Matrix Clustered on Rank-25 NMF",
-        col = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
-        top_annotation = HeatmapAnnotation(gamma = anno_barplot(as.numeric(tblAnnot[poi,"gamma"]), bar_width = 0.9),
-                                           tau = anno_barplot(as.numeric(tblAnnot[poi,"tau"]), bar_width = 0.9),
-                                           rho = anno_barplot(as.numeric(tblAnnot[poi,"rho"]), bar_width = 0.9),
-                                           GO = tblAnnot[poi,"go_term"],
-                                           treatment = tblAnnot[poi,"cond"],
-                                           context = tblAnnot[poi,"source"],
-                                           coverage_log10 = log(as.numeric(tblAnnot[poi,"coverage"])),
-                                           col = list(treatment = c("noRT" = "#2166AC", "RT" = "#B2182B","RTvsnoRT" = "green4"),
-                                                      context = c("invitro" = "#D53E4F", "preinf" = "#FC8D59","CED" = "#FEE08B"),
-                                                      GO = c("Acetyltransferase" = "#9E0142", "Ankyrin Repeat" = "#D53E4F",
-                                                             "Cyclin-dependent kinase inhibitor" = "#F46D43", "Signaling" = "#FDAE61",
-                                                             "DNA damage response" = "#FEE08B", "DNA Replication" = "#FFFFBF",
-                                                             "LIM Domain" = "#E6F598", "Metabolism" = "#ABDDA4","Mitochondria" = "#66C2A5",
-                                                             "Mitosis" = "#3288BD", "Proteasome" = "#5E4FA2", "Ras pathway" = "#1B9E77",
-                                                             "Receptor" = "#D95F02", "RNA polymerase" = "#7570B3", "Telomere" = "#E7298A","Transcription" = "#66A61E","Translation" = "#E6AB02",
-                                                             "Non-targeting" = "gray50"),
-                                                      coverage_log10 = colorRamp2(quantile(log(as.numeric(tblAnnot[poi,"coverage"]),10), probs = seq(0, 1, by = 0.25)), viridis(5))
-                                           )),
-        column_split = factor(tblAnnot[poi,"source"], levels = c("invitro","preinf","CED")),
+        col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red")),
+        # top_annotation = HeatmapAnnotation(gamma = anno_barplot(as.numeric(phenoTbl[poi,"gamma"]), bar_width = 0.9),
+        #                                    tau = anno_barplot(as.numeric(phenoTbl[poi,"tau"]), bar_width = 0.9),
+        #                                    rho = anno_barplot(as.numeric(phenoTbl[poi,"rho"]), bar_width = 0.9))
+        #                                    GO = tblAnnot[poi,"go_term"],
+        #                                    treatment = tblAnnot[poi,"cond"],
+        #                                    context = tblAnnot[poi,"source"],
+        #                                    coverage_log10 = log(as.numeric(tblAnnot[poi,"coverage"])),
+        #                                    col = list(treatment = c("noRT" = "#2166AC", "RT" = "#B2182B","RTvsnoRT" = "green4"),
+        #                                               context = c("invitro" = "#D53E4F", "preinf" = "#FC8D59","CED" = "#FEE08B"),
+        #                                               GO = c("Acetyltransferase" = "#9E0142", "Ankyrin Repeat" = "#D53E4F",
+        #                                                      "Cyclin-dependent kinase inhibitor" = "#F46D43", "Signaling" = "#FDAE61",
+        #                                                      "DNA damage response" = "#FEE08B", "DNA Replication" = "#FFFFBF",
+        #                                                      "LIM Domain" = "#E6F598", "Metabolism" = "#ABDDA4","Mitochondria" = "#66C2A5",
+        #                                                      "Mitosis" = "#3288BD", "Proteasome" = "#5E4FA2", "Ras pathway" = "#1B9E77",
+        #                                                      "Receptor" = "#D95F02", "RNA polymerase" = "#7570B3", "Telomere" = "#E7298A","Transcription" = "#66A61E","Translation" = "#E6AB02",
+        #                                                      "Non-targeting" = "gray50"),
+        #                                               coverage_log10 = colorRamp2(quantile(log(as.numeric(tblAnnot[poi,"coverage"]),10), probs = seq(0, 1, by = 0.25)), viridis(5))
+        #                                    )),
+        # column_split = factor(tblAnnot[poi,"source"], levels = c("invitro","preinf","CED")),
         cluster_column_slices = FALSE,
         cluster_columns = TRUE,
         width = ncol(expr_matrix)*unit(4, "mm"),
         height = nrow(expr_matrix)*unit(4, "mm"),
 )
-pdf(paste(OUTPUT_DIR, "output_matrix_lognormalized_lfc_rank25_MaxModules_range1_2.pdf", sep = "/"),
+pdf(paste(OUTPUT_DIR, "output_matrix_lognormalized_lfc_rank25_MaxModules_range.pdf", sep = "/"),
     width=35,
     height=19,
     useDingbats=FALSE)
