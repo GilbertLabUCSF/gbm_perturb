@@ -24,6 +24,7 @@ library(reshape2)
 library(SCpubr)
 library(enrichR)
 library(RColorBrewer)
+library(EnhancedVolcano)
 ```
 
 Define some constants. Note that we are using the human and mouse combined reference Seurat object right now.
@@ -732,9 +733,87 @@ We can also just straight up look at DESeq, but filter some items out.
 filtered.list <- list()
 for (name in names(data.list)) {
   df <- data.list[[name]]
-  df <- subset(df, !is.na(padj))
-  df <- subset(df, pvalue < 0.05 & abs(log_fc) > 0.5)
+  # df <- subset(df, !is.na(padj))
+  df <- subset(df, pvalue < 0.05 & abs(log_fc) > 0.2)
   filtered.list[[name]] <- df
+}
+```
+
+Stick these into Enrichr and see what we get:
+
+```{r}
+dbs <- c("MSigDB_Hallmark_2020","KEGG_2021_Human",
+         "WikiPathway_2021_Human","GO_Biological_Process_2021")
+for (cluster.name in names(filtered.list)) {
+  df <- filtered.list[[cluster.name]]
+  
+  df.up <- df[df$log_fc > 0, ]
+  goi <- df.up$feature
+  goi <- gsub("GRCh38-", "", goi)
+  enrichROut <- enrichr(goi, dbs)
+  msigDB.terms <- enrichROut$MSigDB_Hallmark_2020
+  GO.terms <- enrichROut$GO_Biological_Process_2021
+  write.table(msigDB.terms, file = sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_explore_outputs/heterogeneity/gbm_pdx_perturb_prkdc/cell_cycle_regressed/enrichr_following_deseq_outputs/up_msigdb_terms_%s.txt", cluster.name))
+  write.table(GO.terms, file = sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_explore_outputs/heterogeneity/gbm_pdx_perturb_prkdc/cell_cycle_regressed/enrichr_following_deseq_outputs/up_go_terms_%s.txt", cluster.name))
+  write.table(goi, file = sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_explore_outputs/heterogeneity/gbm_pdx_perturb_prkdc/cell_cycle_regressed/enrichr_following_deseq_outputs/up_goi_%s.txt", cluster.name), quote = FALSE, row.names = FALSE)
+  Sys.sleep(3)
+  
+  df.down <- df[df$log_fc < 0, ]
+  goi <- df.down$feature
+  goi <- gsub("GRCh38-", "", goi)
+  enrichROut <- enrichr(goi, dbs)
+  msigDB.terms <- enrichROut$MSigDB_Hallmark_2020
+  GO.terms <- enrichROut$GO_Biological_Process_2021
+  write.table(msigDB.terms, file = sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_explore_outputs/heterogeneity/gbm_pdx_perturb_prkdc/cell_cycle_regressed/enrichr_following_deseq_outputs/down_msigdb_terms_%s.txt", cluster.name))
+  write.table(GO.terms, file = sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_explore_outputs/heterogeneity/gbm_pdx_perturb_prkdc/cell_cycle_regressed/enrichr_following_deseq_outputs/down_go_terms_%s.txt", cluster.name))
+  write.table(goi, file = sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_explore_outputs/heterogeneity/gbm_pdx_perturb_prkdc/cell_cycle_regressed/enrichr_following_deseq_outputs/down_goi_%s.txt", cluster.name), quote = FALSE, row.names = FALSE)
+  Sys.sleep(3)
+}
+```
+
+We'll generate Enhanced volcano plots for PRKDC.
+
+```{r}
+for (cluster.name in names(data.list)) {
+  df.all <- data.list[[cluster.name]]
+  df.all$feature <- gsub("GRCh38-", "", df.all$feature)
+  
+  df <- filtered.list[[cluster.name]]
+  df$feature <- gsub("GRCh38-", "", df$feature)
+  top10.high = df[order(df$log_fc), ][1:10, ]$feature
+  top10.low = df[order(-df$log_fc), ][1:10, ]$feature
+  goi <- c(top10.high, top10.low)
+  
+  plot <- EnhancedVolcano(
+    df.all,
+    lab = df.all$feature,
+    x = "log_fc",
+    y = "pvalue",
+    xlab = bquote(~Log[2]~ 'fold change'),
+    ylim = rev(-log(range(df.all$pvalue, na.rm = TRUE), 10)),
+    title = cluster.name,
+    subtitle = "p < 0.05 and |log_fc| > 0.2",
+    selectLab = goi,
+    pCutoff = 0.05,
+    FCcutoff = 0.2,
+    pointSize = 2.0,
+    labSize = 4.0,
+    colAlpha = 1,
+    col = c("gray50", "gray50", "gray50", "red3"),
+    legendPosition = "right",
+    gridlines.major = FALSE,
+    gridlines.minor = FALSE,
+    cutoffLineType = "blank",
+    vline = 0,
+    hline = 0.05,
+    legendLabSize = 6,
+    legendIconSize = 2.0,
+    drawConnectors = TRUE,
+    max.overlaps = 30,
+    widthConnectors = 0.25,
+    arrowheads = FALSE
+  )
+  ggsave(sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_explore_outputs/heterogeneity/gbm_pdx_perturb_prkdc/cell_cycle_regressed/deseq_volcano_outputs/%s.pdf", cluster.name), plot, width = 10, height = 10, useDingbats = FALSE)
 }
 ```
 

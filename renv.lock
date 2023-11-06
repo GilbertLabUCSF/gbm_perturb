@@ -1,6 +1,6 @@
 {
   "R": {
-    "Version": "4.3.1",
+    "Version": "4.3.2",
     "Repositories": [
       {
         "Name": "BioCsoft",
@@ -257,6 +257,17 @@
         "stats4"
       ],
       "Hash": "0df7d9f448796a41bd9a2717f38ebdd7"
+    },
+    "EnhancedVolcano": {
+      "Package": "EnhancedVolcano",
+      "Version": "1.18.0",
+      "Source": "Bioconductor",
+      "Requirements": [
+        "ggplot2",
+        "ggrepel",
+        "methods"
+      ],
+      "Hash": "06969db87790a0a17807e5a566b8e560"
     },
     "FNN": {
       "Package": "FNN",
@@ -2640,6 +2651,17 @@
         "methods"
       ],
       "Hash": "bc5b9e048c58ce45bb646c10d311d1e2"
+    },
+    "org.Mm.eg.db": {
+      "Package": "org.Mm.eg.db",
+      "Version": "3.17.0",
+      "Source": "Bioconductor",
+      "Requirements": [
+        "AnnotationDbi",
+        "R",
+        "methods"
+      ],
+      "Hash": "a78df53519d3e976b4269414bddc2513"
     },
     "parallelly": {
       "Package": "parallelly",

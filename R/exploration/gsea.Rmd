@@ -1,4 +1,11 @@
-# R-GSEA
+# R-GSEA - GBM43
+
+Set libpaths
+
+```{r}
+# Set libpaths
+.libPaths(c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb/renv/library/R-4.3/x86_64-pc-linux-gnu", .libPaths()))
+```
 
 Import libraries
 
@@ -15,6 +22,13 @@ library(ggplot2)
 library(grid)
 library(ComplexHeatmap)
 library(colorRamp2)
+library(tidyr)
+library(patchwork)
+library(ggtree)
+library(gridExtra)
+library(ape)
+library(RColorBrewer)
+# library(reactome.db)
 ```
 
 Define a bunch of constants.
@@ -24,7 +38,6 @@ INPUT_DIRS <- c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_clean_outp
 OUTPUT_DIR <- "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_explore_outputs/gsea"
 PATH_TO_SEURAT_OBJECT <- "/raleighlab/data1/liuj/gbm_perturb/analysis/GBM43_1_malignant_only_annotated_20230817.Rds"
 WORKING_DIR <- "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_explore_outputs/gsea/noRTNormalized"
-setwd(WORKING_DIR)
 ```
 
 Import the DESeq output
@@ -60,7 +73,8 @@ for (name in names(data.list)) {
   deseq_table <- deseq_table %>%
     group_by(ensembl) %>%
     summarize(log_fc = mean(log_fc))
-  deseq_table <- deseq_table[order(-deseq_table$log_fc), ]
+  deseq_table <- deseq_table %>% mutate(rank = rank(log_fc,  ties.method = "random"))
+  deseq_table <- deseq_table[order(-deseq_table$rank),] # Rank deterministically
   
   # Generate a ranked list
   gene_list <- deseq_table$log_fc
@@ -76,11 +90,12 @@ Run GSEA using msigdbr and fgsea
 msigdbr_df <- msigdbr(species = "Homo sapiens", category = "H")
 msigdbr_list = split(x = msigdbr_df$ensembl_gene, f = msigdbr_df$gs_name)
 
+set.seed(1) # required for deterministic performance
 fgsea.output.list <- list()
 for (name in names(ranked_gene_set_list)) {
   gsea_results <- fgsea(pathways = msigdbr_list, stats = ranked_gene_set_list[[name]],
                         maxSize = 500, eps = 0.0) # allow arbitrarily low p-values
-  fgsea_output_list[[name]] <- gsea_results
+  fgsea.output.list[[name]] <- gsea_results
 }
 saveRDS(fgsea.output.list, paste(WORKING_DIR, "fgsea_ensembl_ontology_list.rds", sep = "/"))
 ```
@@ -96,7 +111,7 @@ for (name in names(ranked_gene_set_list)) {
                TERM2GENE = hallmark_term_to_gene, pvalueCutoff = 1.0)
   hallmark.msigdb.ontology.list[[name]] <- gsea
 }
-saveRDS(hallmark.msigdb.ontology.list, file = paste(WORKING_DIR, "hallmark_ontology_list.rds", sep = "/"))
+saveRDS(hallmark.msigdb.ontology.list, file = paste(WORKING_DIR, "gsea_ensembl_ontology_list.rds", sep = "/"))
 ```
 
 Plot out example results for PRKDC.
@@ -216,6 +231,8 @@ for (name in names(ranked_gene_set_list)) {
 saveRDS(bp.ontology.list, file = paste(WORKING_DIR, "bp_ontology_list.rds", sep = "/"))
 ```
 
+## Plotting with Hallmark ontologies
+
 Let's generate a heatmap that includes all of the outputs across all of the Hallmark gene sets. To do so, we want to convert all of our outputs into a single dataframe.
 
 ```{r}
@@ -224,10 +241,10 @@ extracted_cols <- lapply(names(fgsea.output.list), function(name) {
   names(col) <- fgsea.output.list[[name]]$pathway
   col
 })
-combined_df <- do.call(cbind, extracted_cols)
-colnames(combined_df) <- names(fgsea.output.list)
+combined.df <- do.call(cbind, extracted_cols)
+colnames(combined.df) <- names(fgsea.output.list)
 
-ht = Heatmap(combined_df,
+ht = Heatmap(combined.df,
         name = "Enrichment Scores across Perturbations and Conditions",
         col = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
         cluster_column_slices = FALSE,
@@ -241,4 +258,472 @@ pdf(paste(OUTPUT_DIR, "enrichment_combined_matrix.pdf", sep = "/"),
     useDingbats=FALSE)
 draw(ht, heatmap_legend_side = "top", annotation_legend_side = "top")
 dev.off()
+```
+
+Make a cool bubble plot where the size of the dot corresponds to p-value, the color of the dot corresponds to net enrichment score, and dots that are significant get highlighted with the adjusted p-value. Hierarchically cluster according to effect size. First, prepare the data:
+
+```{r}
+combined.df <- bind_rows(fgsea.output.list, .id = "Perturbations")
+combined.df$pathway <- gsub("HALLMARK_", "", combined.df$pathway)
+combined.df$pathway <- gsub(" ", "", combined.df$pathway)
+combined.df$log10pvalue <- -log10(combined.df$pval)
+combined.df$Perturbations <- gsub("_non-targeting_noRT", "", combined.df$Perturbations)
+
+combined.df <- combined.df %>%
+  group_by(pathway) %>%
+  filter(any(pval < 0.05)) %>%
+  ungroup()
+
+es.df <- combined.df %>%
+  select(-pval, -padj, -log2err, -NES, -size, -leadingEdge, -log10pvalue)
+
+es.df <- es.df %>%
+  group_by(pathway, Perturbations) %>%
+  pivot_wider(names_from = Perturbations, values_from = ES) %>%
+  group_by(pathway)
+
+es.df <- as.data.frame(es.df)
+rownames(es.df) <- es.df$pathway
+es.df <- es.df %>% select(-pathway)
+
+# Use this section if you want to split by RT/noRT and cluster
+# the columns that way. Note that the rows will still be clustered
+# across them RT/noRT
+
+RT.names <- colnames(es.df)[grepl("_RT", colnames(es.df))]
+noRT.names <- colnames(es.df)[grepl("_noRT", colnames(es.df))]
+RT.df <- es.df[,RT.names]
+noRT.df <- es.df[,noRT.names]
+
+col.dist.RT <- dist(t(RT.df), method = "euclidean")
+col.hclust.RT <- hclust(col.dist.RT, method = "complete")
+col.order.RT <- colnames(RT.df)[order.dendrogram(as.dendrogram(col.hclust.RT))]
+col.dist.noRT <- dist(t(noRT.df), method = "euclidean")
+col.hclust.noRT <- hclust(col.dist.noRT, method = "complete")
+col.order.noRT <- colnames(noRT.df)[order.dendrogram(as.dendrogram(col.hclust.noRT))]
+col.order <- c(col.order.noRT, col.order.RT)
+
+row_dist <- dist(es.df, method = "euclidean")
+row_hclust <- hclust(row_dist, method = "complete")
+row.order <- order.dendrogram(as.dendrogram(row_hclust))
+
+df.ordered <- combined.df %>%
+  arrange(match(pathway, rownames(es.df)[row.order]), match(Perturbations, c(col.order.noRT, col.order.RT)))
+
+# Use this section if you just want to cluster across all rows and cols
+
+# row_dist <- dist(es.df, method = "euclidean")
+# row_hclust <- hclust(row_dist, method = "complete")
+# row_order <- order.dendrogram(as.dendrogram(row_hclust))
+# 
+# col_dist <- dist(t(es.df), method = "euclidean")
+# col_hclust <- hclust(col_dist, method = "complete")
+# col.order <- order.dendrogram(as.dendrogram(col_hclust))
+# 
+# df.ordered <- combined.df %>%
+#   arrange(match(pathway, rownames(es.df)[row_order]), match(Perturbations, colnames(es.df)[col.order]))
+
+df.ordered$pathway <- factor(df.ordered$pathway, levels = unique(df.ordered$pathway))
+df.ordered$Perturbations <- factor(df.ordered$Perturbations, levels = unique(df.ordered$Perturbations))
+
+# Add in RT fill bar
+
+df.ordered$RT <- ifelse(grepl("_RT", df.ordered$Perturbations), "RT", "noRT")
+unique_perturbations <- unique(df.ordered$Perturbations)
+
+rect.df <- data.frame(
+  xmin = unique_perturbations,
+  xmax = unique_perturbations,
+  ymin = rep(max(as.numeric(df.ordered$pathway)) + 1, length(unique_perturbations)),
+  ymax = rep(max(as.numeric(df.ordered$pathway)) + 2, length(unique_perturbations)),
+  RT = ifelse(df.ordered$RT[match(unique_perturbations, df.ordered$Perturbations)] == "RT", "RT", "noRT")
+)
+rect.df$numeric_xmin <- as.numeric(as.factor(rect.df$xmin)) - 0.5
+rect.df$numeric_xmax <- as.numeric(as.factor(rect.df$xmax)) + 0.5
+
+unique.perturbations <- unique(gsub("_noRT", "", unique_perturbations))
+unique.perturbations <- unique(gsub("_RT", "", unique.perturbations))
+
+# Add in screening phenotype annotations
+
+phenoTbl <- read.table('/raleighlab/data1/liuj/crispr_screens/hs_rt_integrated/GBM43_LN18_T98G_zim3_phenotable.txt',sep='\t',header=TRUE,row.names=1)
+phenoTbl <- subset(phenoTbl, GBM43.target %in% unique.perturbations)
+phenoTbl <- phenoTbl[order(phenoTbl$GBM43.gamma_pval),]
+sgAnnot <- data.frame(row.names = unique.perturbations, 
+                      gamma = phenoTbl[unique.perturbations,"GBM43.gamma_avg"], 
+                      tau = phenoTbl[unique.perturbations,"GBM43.tauRT_avg"], 
+                      rho = phenoTbl[unique.perturbations,"GBM43.rhoRT_avg"])
+sgAnnot["non-targeting",] <- c(0, 0, 0)
+sgAnnot["GRAMD4",] <- c(0, 0, 0)
+
+RT.sgAnnot <- sgAnnot
+rownames(RT.sgAnnot) <- paste(rownames(RT.sgAnnot), "_RT", sep = "")
+
+noRT.sgAnnot <- sgAnnot
+rownames(noRT.sgAnnot) <- paste(rownames(noRT.sgAnnot), "_noRT", sep = "")
+
+annotation.table <- rbind(RT.sgAnnot, noRT.sgAnnot)
+annotation.table <- annotation.table[rownames(annotation.table) != "non-targeting_noRT", ]
+annotation.table$Perturbations <- rownames(annotation.table)
+annotation.table <- annotation.table %>%
+  arrange(match(Perturbations, colnames(es.df)[col.order]))
+annotation.table$Perturbations <- factor(annotation.table$Perturbations, levels = unique(annotation.table$Perturbations))
+
+# Add significance layer
+df.ordered$Significance <- ifelse(df.ordered$padj < 0.05, "adjp < 0.05", "NA")
+
+# Clean up names
+df.ordered$Pathways <- df.ordered$pathway
+```
+
+Then make the plot:
+
+```{r}
+bubble.plot <- ggplot(df.ordered,
+               aes(x = Perturbations)) +
+  
+  # Add the bubble and outline significance layers
+  geom_point(aes(y = Pathways, size = log10pvalue, color = ES), alpha = 0.9) +
+  geom_point(data = subset(df.ordered, padj < 0.05), 
+            aes(y = pathway, size = log10pvalue, shape = 'adjp < 0.05'), 
+            color = "black", fill = NA, alpha = 0.6) + 
+  # Add the NA layer
+  geom_point(data = subset(df.ordered, is.na(pval) | is.na(padj) | is.na(log10pvalue)), 
+            aes(y = Pathways), 
+            color = "black", size = 1, alpha = 0.6) +
+  scale_size(range = c(2, 7)) +
+  scale_color_gradient2(
+    low = brewer.pal(n = 11, name = "RdBu")[11],
+    mid = "white",
+    high = brewer.pal(n = 11, name = "RdBu")[1],
+    midpoint = 0,
+    na.value = "black",
+  ) +
+  scale_shape_manual(name = "Significance", 
+                   values = c(`adjp < 0.05` = 21),
+                   guide = guide_legend(override.aes = list(color = "black", fill = NA))) +
+  
+  # Add the bar layer
+  geom_rect(data = rect.df, aes(xmin = numeric_xmin, xmax = numeric_xmax, ymin = ymin, ymax = ymax, fill = RT), inherit.aes = FALSE) +
+  scale_fill_manual(values = c("RT" = "pink", "noRT" = "lightblue")) +
+
+  # Labels
+  labs(
+    color = "Effect size",
+    size = "-Log10 pvalue"
+  ) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.key.height = unit(0.3, 'cm'),
+        axis.line = element_line(colour = "black"),
+        legend.key = element_blank())
+
+annotation.plot.theme <- theme(
+  panel.background = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.text.x = element_blank(),
+  axis.title.x = element_blank(),
+  axis.ticks.x = element_blank(),
+  axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0))
+)
+gamma.plot <- ggplot(annotation.table, aes(x = Perturbations, y = gamma)) +
+  geom_col(width = 1, fill = "grey") + annotation.plot.theme
+tau.plot <- ggplot(annotation.table, aes(x = Perturbations, y = tau)) +
+  geom_col(width = 1, fill = "grey") + annotation.plot.theme
+rho.plot <- ggplot(annotation.table, aes(x = Perturbations, y = rho)) +
+  geom_col(width = 1, fill = "grey") + annotation.plot.theme
+
+module.dendrogram <- ggtree(as.phylo(row_hclust)) + theme_tree()
+
+# Use this section if not splitting by RT/noRT
+
+# perturb.dendrogram <- ggtree(as.phylo(col_hclust)) + theme_tree() + coord_flip() + scale_x_reverse()
+
+# Use this section if splitting by RT/noRT
+
+perturb.dendrogram.RT <- ggtree(as.phylo(col.hclust.RT)) + theme_tree() + coord_flip() + scale_x_reverse()
+perturb.dendrogram.noRT <- ggtree(as.phylo(col.hclust.noRT)) + theme_tree() + coord_flip() + scale_x_reverse()
+
+vertical.plot <- gamma.plot / tau.plot / rho.plot / ((perturb.dendrogram.RT | plot_spacer() | perturb.dendrogram.noRT) + plot_layout(widths = c(0.33, -0.02, 0.36))) / bubble.plot + plot_layout(heights = c(0.5, 0.5, 0.5, 0.5, 3))
+dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heights = c(0.85, 1))
+combined.plot <- dendrogram.vertical.plot | vertical.plot
+
+combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annotation(
+  title = "Enrichment of Hallmark pathways across perturbations",
+  subtitle = "GBM43 CED RT/noRT"
+)
+ggsave(paste(WORKING_DIR, "enrichment_bubble_plot_fgsea.pdf", sep = "/"),
+       combined.plot, height = 12, width = 18, device = pdf)
+```
+
+## Try running a lot of this stuff with Reactome
+
+```{r}
+WORKING_DIR <- "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_explore_outputs/gsea/noRTNormalized/reactome"
+```
+
+Does this make things more interpretable? First, let's run GSEA with Reactome. To do so, we'll have to convert all of our ensemble genes to Entrez gene IDs.
+
+```{r}
+ranked_gene_set_list <- list()
+for (name in names(data.list)) {
+  cat("Processing", name, "\n")
+  
+  deseq_table <- data.list[[name]]
+  deseq_table$feature <- gsub("GRCh38-", "", deseq_table$feature)
+  mapping <- mapIds(org.Hs.eg.db, keys = deseq_table$feature,
+                      column = "ENTREZID", keytype = "SYMBOL")
+  deseq_table$entrezid <- unlist(mapping)
+  deseq_table <- subset(deseq_table, !is.na(deseq_table$entrezid))
+  # Note that this step separates out the tables to different genes
+  deseq_table <- deseq_table[!is.na(deseq_table$log_fc), ]
+  
+  # Group by unique Entrez ID and average
+  deseq_table <- deseq_table %>%
+    group_by(entrezid) %>%
+    summarize(log_fc = mean(log_fc))
+  deseq_table <- deseq_table %>% mutate(rank = rank(log_fc,  ties.method = "random"))
+  deseq_table <- deseq_table[order(-deseq_table$rank),] # Rank deterministically
+  
+  # Generate a ranked list
+  gene_list <- deseq_table$log_fc
+  gene_names <- deseq_table$entrezid
+  names(gene_list) <- gene_names
+  ranked_gene_set_list[[name]] <- gene_list
+}
+```
+
+Then, we can use the convenient `reactomePathways` function to get ourselves the pathways that we want.
+
+```{r}
+set.seed(1) # required for deterministic performance
+fgsea.output.list <- list()
+for (name in names(ranked_gene_set_list)) {
+  genes <- names(ranked_gene_set_list[[name]])
+  gene.pathways <- reactomePathways(genes)
+  gsea.results <- fgsea(pathways = gene.pathways, stats = ranked_gene_set_list[[name]],
+                        maxSize = 500, eps = 0.0) # allow arbitrarily low p-values
+  fgsea.output.list[[name]] <- gsea.results
+}
+saveRDS(fgsea.output.list, paste(WORKING_DIR, "fgsea_entrez_reactome_list.rds", sep = "/"))
+```
+
+After that, plot the results in the same way that we plotted the others. Find the union of the top 1% of pathways across all perturbations:
+
+```{r}
+combined.df <- bind_rows(fgsea.output.list, .id = "Perturbations")
+combined.df$log10pvalue <- -log10(combined.df$pval)
+combined.df$Perturbations <- gsub("_non-targeting_noRT", "", combined.df$Perturbations)
+
+# Filter out any pathways that have no significance across any perturbation
+combined.df <- combined.df %>%
+  group_by(pathway) %>%
+  filter(any(pval < 0.05)) %>%
+  ungroup()
+
+# Filter out any pathways that don't have any perturbation where they match more than 5 
+combined.df <- combined.df %>%
+  group_by(pathway) %>%
+  filter(any(size >= 5)) %>%
+  ungroup()
+
+# Find the number of pathways in the top 1% for each perturbation
+combined.df <- combined.df %>%
+  group_by(Perturbations) %>%
+  mutate(total_count = ceiling(n() * 0.01))
+
+# Slice all of the perturbations to that number of pathways
+top.pathways <- combined.df %>%
+  group_by(Perturbations) %>%
+  arrange(desc(abs(ES))) %>%
+  filter(row_number() <= total_count) %>% 
+  ungroup() %>%
+  distinct(pathway) %>%
+  pull(pathway)
+```
+
+Plot a reduced heatmap that can tell us what the enrichment scores look like:
+
+```{r}
+extracted_cols <- lapply(names(fgsea.output.list), function(name) {
+  col <- fgsea.output.list[[name]]$ES
+  names(col) <- fgsea.output.list[[name]]$pathway
+  col
+})
+heatmap.df <- do.call(cbind, extracted_cols)
+colnames(heatmap.df) <- names(fgsea.output.list)
+heatmap.df <- heatmap.df[top.pathways, ]
+
+colnames(heatmap.df) <- gsub("_non-targeting_noRT", "", colnames(heatmap.df))
+
+ht = Heatmap(heatmap.df,
+        name = "Enrichment Scores across Perturbations and Conditions",
+        col = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
+        cluster_column_slices = FALSE,
+        cluster_columns = TRUE,
+        width = ncol(heatmap.df)*unit(4, "mm"),
+        height = nrow(heatmap.df)*unit(4, "mm"),
+)
+pdf(paste(WORKING_DIR, "enrichment_combined_matrix.pdf", sep = "/"),
+    width=30,
+    height=40,
+    useDingbats=FALSE)
+draw(ht, heatmap_legend_side = "top", annotation_legend_side = "top")
+dev.off()
+```
+
+Then the preparation for the bubble plot:
+
+```{r}
+combined.df <- bind_rows(fgsea.output.list, .id = "Perturbations")
+combined.df$log10pvalue <- -log10(combined.df$pval)
+combined.df$Perturbations <- gsub("_non-targeting_noRT", "", combined.df$Perturbations)
+
+# Filter out any pathways that have no significance across any perturbation
+combined.df <- combined.df %>%
+  group_by(pathway) %>%
+  filter(any(pval < 0.05)) %>%
+  ungroup()
+
+# Filter out any pathways that don't have any perturbation where they match more than 5 
+combined.df <- combined.df %>%
+  group_by(pathway) %>%
+  filter(any(size >= 5)) %>%
+  ungroup()
+
+# Find the number of pathways in the top 1% for each perturbation
+combined.df <- combined.df %>%
+  group_by(Perturbations) %>%
+  mutate(total_count = ceiling(n() * 0.01))
+
+# Slice all of the perturbations to that number of pathways
+top.pathways <- combined.df %>%
+  group_by(Perturbations) %>%
+  arrange(desc(abs(ES))) %>%
+  filter(row_number() <= total_count) %>% 
+  ungroup() %>%
+  distinct(pathway) %>%
+  pull(pathway)
+
+# Take only those pathways into plotting
+combined.df <- subset(combined.df, pathway %in% top.pathways)
+
+
+# Take only the top 10 pathways by enrichment score per perturbation. If there are overlaps, take the union across all of them
+top10.pathways <- combined.df %>%
+  group_by(Perturbations) %>%
+  arrange(desc(abs(ES))) %>%
+  slice_head(n = 10) %>%
+  ungroup() %>%
+  distinct(pathway) %>%
+  pull(pathway)
+
+
+
+combined.df <- combined.df 
+
+
+es.df <- combined.df %>%
+  select(-pval, -padj, -log2err, -NES, -size, -leadingEdge, -log10pvalue)
+
+es.df <- es.df %>%
+  group_by(pathway, Perturbations) %>%
+  pivot_wider(names_from = Perturbations, values_from = ES) %>%
+  group_by(pathway)
+
+es.df <- as.data.frame(es.df)
+rownames(es.df) <- es.df$pathway
+es.df <- es.df %>% select(-pathway)
+
+# Use this section if you want to split by RT/noRT and cluster
+# the columns that way. Note that the rows will still be clustered
+# across them RT/noRT
+
+RT.names <- colnames(es.df)[grepl("_RT", colnames(es.df))]
+noRT.names <- colnames(es.df)[grepl("_noRT", colnames(es.df))]
+RT.df <- es.df[,RT.names]
+noRT.df <- es.df[,noRT.names]
+
+col.dist.RT <- dist(t(RT.df), method = "euclidean")
+col.hclust.RT <- hclust(col.dist.RT, method = "complete")
+col.order.RT <- colnames(RT.df)[order.dendrogram(as.dendrogram(col.hclust.RT))]
+col.dist.noRT <- dist(t(noRT.df), method = "euclidean")
+col.hclust.noRT <- hclust(col.dist.noRT, method = "complete")
+col.order.noRT <- colnames(noRT.df)[order.dendrogram(as.dendrogram(col.hclust.noRT))]
+col.order <- c(col.order.noRT, col.order.RT)
+
+row_dist <- dist(es.df, method = "euclidean")
+row_hclust <- hclust(row_dist, method = "complete")
+row.order <- order.dendrogram(as.dendrogram(row_hclust))
+
+df.ordered <- combined.df %>%
+  arrange(match(pathway, rownames(es.df)[row.order]), match(Perturbations, c(col.order.noRT, col.order.RT)))
+
+# Use this section if you just want to cluster across all rows and cols
+
+# row_dist <- dist(es.df, method = "euclidean")
+# row_hclust <- hclust(row_dist, method = "complete")
+# row_order <- order.dendrogram(as.dendrogram(row_hclust))
+# 
+# col_dist <- dist(t(es.df), method = "euclidean")
+# col_hclust <- hclust(col_dist, method = "complete")
+# col.order <- order.dendrogram(as.dendrogram(col_hclust))
+# 
+# df.ordered <- combined.df %>%
+#   arrange(match(pathway, rownames(es.df)[row_order]), match(Perturbations, colnames(es.df)[col.order]))
+
+df.ordered$pathway <- factor(df.ordered$pathway, levels = unique(df.ordered$pathway))
+df.ordered$Perturbations <- factor(df.ordered$Perturbations, levels = unique(df.ordered$Perturbations))
+
+# Add in RT fill bar
+
+df.ordered$RT <- ifelse(grepl("_RT", df.ordered$Perturbations), "RT", "noRT")
+unique_perturbations <- unique(df.ordered$Perturbations)
+
+rect.df <- data.frame(
+  xmin = unique_perturbations,
+  xmax = unique_perturbations,
+  ymin = rep(max(as.numeric(df.ordered$pathway)) + 1, length(unique_perturbations)),
+  ymax = rep(max(as.numeric(df.ordered$pathway)) + 2, length(unique_perturbations)),
+  RT = ifelse(df.ordered$RT[match(unique_perturbations, df.ordered$Perturbations)] == "RT", "RT", "noRT")
+)
+rect.df$numeric_xmin <- as.numeric(as.factor(rect.df$xmin)) - 0.5
+rect.df$numeric_xmax <- as.numeric(as.factor(rect.df$xmax)) + 0.5
+
+unique.perturbations <- unique(gsub("_noRT", "", unique_perturbations))
+unique.perturbations <- unique(gsub("_RT", "", unique.perturbations))
+
+# Add in screening phenotype annotations
+
+phenoTbl <- read.table('/raleighlab/data1/liuj/crispr_screens/hs_rt_integrated/GBM43_LN18_T98G_zim3_phenotable.txt',sep='\t',header=TRUE,row.names=1)
+phenoTbl <- subset(phenoTbl, GBM43.target %in% unique.perturbations)
+phenoTbl <- phenoTbl[order(phenoTbl$GBM43.gamma_pval),]
+sgAnnot <- data.frame(row.names = unique.perturbations, 
+                      gamma = phenoTbl[unique.perturbations,"GBM43.gamma_avg"], 
+                      tau = phenoTbl[unique.perturbations,"GBM43.tauRT_avg"], 
+                      rho = phenoTbl[unique.perturbations,"GBM43.rhoRT_avg"])
+sgAnnot["non-targeting",] <- c(0, 0, 0)
+sgAnnot["GRAMD4",] <- c(0, 0, 0)
+
+RT.sgAnnot <- sgAnnot
+rownames(RT.sgAnnot) <- paste(rownames(RT.sgAnnot), "_RT", sep = "")
+
+noRT.sgAnnot <- sgAnnot
+rownames(noRT.sgAnnot) <- paste(rownames(noRT.sgAnnot), "_noRT", sep = "")
+
+annotation.table <- rbind(RT.sgAnnot, noRT.sgAnnot)
+annotation.table <- annotation.table[rownames(annotation.table) != "non-targeting_noRT", ]
+annotation.table$Perturbations <- rownames(annotation.table)
+annotation.table <- annotation.table %>%
+  arrange(match(Perturbations, colnames(es.df)[col.order]))
+annotation.table$Perturbations <- factor(annotation.table$Perturbations, levels = unique(annotation.table$Perturbations))
+
+# Add significance layer
+df.ordered$Significance <- ifelse(df.ordered$padj < 0.05, "adjp < 0.05", "NA")
+
+# Clean up names
+df.ordered$Pathways <- df.ordered$pathway
 ```

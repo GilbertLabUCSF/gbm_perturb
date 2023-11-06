@@ -317,42 +317,42 @@ phenoTbl <- read.table(PHENOTBL,sep='\t',header=TRUE,row.names=1)
 double_knockouts = rownames(phenoTbl)[grep("^(?:[^_]*?_-_[^-]*?){2}[^_]*$", rownames(phenoTbl))]
 phenoTbl = phenoTbl[double_knockouts,]
 rownames(phenoTbl) = phenoTbl$GBM43.target
-# coverageTbl <- read.table('/raleighlab/data1/liuj/gbm_perturb/analysis/gbm_pdx_perturb_GL261_integrate_xfp/pdx_perturb_GL261_concordant_sgRNAs.txt',header=TRUE,sep='\t')
-# coverageTblCmp <- rbind(invitronoRT = apply(coverageTbl[c("GL261_48hit_noRT_1","GL261_48hit_noRT_2"),],2,sum),
-#                         invitroRT = apply(coverageTbl[c("GL261_48hit_RT_1","GL261_48hit_RT_2"),],2,sum),
-#                         preinfnoRT = apply(coverageTbl[c("GL261_noRT_preinf_MACSFACS_1","GL261_noRT_preinf_MACSFACS_2","GL261_noRT_preinf_MACSFACS_3"),],2,sum),
-#                         preinfRT = apply(coverageTbl[c("GL261_RT_preinf_MACSFACS_1","GL261_RT_preinf_MACSFACS_2","GL261_RT_preinf_MACSFACS_3"),],2,sum),
-#                         CEDnoRT = apply(coverageTbl[c("GL261_CED_pool","GL261_noRT_CED_MACSFACS"),],2,sum),
-#                         CEDRT = coverageTbl[c("GL261_RT_CED_MACSFACS"),])
-#
-# colnames(coverageTblCmp) <- gsub("non.targeting","NTC",colnames(coverageTblCmp))
-# sgAnnot <- data.frame(row.names = colnames(coverageTblCmp), gamma = phenoTbl[colnames(coverageTblCmp),"gamma"], tau = phenoTbl[colnames(coverageTblCmp),"tau"], rho = phenoTbl[colnames(coverageTblCmp),"rho"])
-# sgAnnot["non.targeting",] <- c(0,0,0)
-# tblAnnot <- data.frame(row.names=colnames(nmfMatsig),
-#                        sgRNA = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 1),
-#                        source = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 2),
-#                        cond = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 3))
-# tblAnnot$sourceCond <- paste(tblAnnot$source,tblAnnot$cond,sep='')
-# tblAnnot$gamma <- sgAnnot[tblAnnot$sgRNA,"gamma"]
-# tblAnnot$tau <- sgAnnot[tblAnnot$sgRNA,"tau"]
-# tblAnnot$rho <- sgAnnot[tblAnnot$sgRNA,"rho"]
-# tblAnnot$coverage <- rep(0,nrow(tblAnnot))
-# for (i in 1:nrow(tblAnnot)){
-#   tryCatch({
-#     tblAnnot[i,"coverage"] <- coverageTblCmp[tblAnnot[i,"sourceCond"],tblAnnot[i,"sgRNA"]]
-#   }, error = function(e) {
-#     print(e)
-#   })
-# }
-# tblAnnot$sgRNACond = paste(tblAnnot$sgRNA,tblAnnot$cond,sep='_')
-#
-# go_categories = read.table(GO_CATEGORIES, sep = ",")
-# colnames(go_categories) = c("Gene", "GO")
-# rownames(go_categories) = go_categories$Gene
-# tblAnnot$go_term = go_categories[tblAnnot$sgRNA, "GO"]
-# rownames(tblAnnot) = paste(tblAnnot$source, tblAnnot$sgRNA, sep = "_")
-#
-# write.table(tblAnnot, paste(OUTPUT_DIR, "/", "RT_annotation_table.txt", sep = ""), sep = "\t")
+coverageTbl <- read.table('/raleighlab/data1/liuj/gbm_perturb/analysis/gbm_pdx_perturb_GL261_integrate_xfp/pdx_perturb_GL261_concordant_sgRNAs.txt',header=TRUE,sep='\t')
+coverageTblCmp <- rbind(invitronoRT = apply(coverageTbl[c("GL261_48hit_noRT_1","GL261_48hit_noRT_2"),],2,sum),
+                        invitroRT = apply(coverageTbl[c("GL261_48hit_RT_1","GL261_48hit_RT_2"),],2,sum),
+                        preinfnoRT = apply(coverageTbl[c("GL261_noRT_preinf_MACSFACS_1","GL261_noRT_preinf_MACSFACS_2","GL261_noRT_preinf_MACSFACS_3"),],2,sum),
+                        preinfRT = apply(coverageTbl[c("GL261_RT_preinf_MACSFACS_1","GL261_RT_preinf_MACSFACS_2","GL261_RT_preinf_MACSFACS_3"),],2,sum),
+                        CEDnoRT = apply(coverageTbl[c("GL261_CED_pool","GL261_noRT_CED_MACSFACS"),],2,sum),
+                        CEDRT = coverageTbl[c("GL261_RT_CED_MACSFACS"),])
+
+colnames(coverageTblCmp) <- gsub("non.targeting","NTC",colnames(coverageTblCmp))
+sgAnnot <- data.frame(row.names = colnames(coverageTblCmp), gamma = phenoTbl[colnames(coverageTblCmp),"gamma"], tau = phenoTbl[colnames(coverageTblCmp),"tau"], rho = phenoTbl[colnames(coverageTblCmp),"rho"])
+sgAnnot["non.targeting",] <- c(0,0,0)
+tblAnnot <- data.frame(row.names=colnames(nmfMatsig),
+                       sgRNA = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 1),
+                       source = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 2),
+                       cond = sapply(strsplit(colnames(nmfMatsig),"_"), `[`, 3))
+tblAnnot$sourceCond <- paste(tblAnnot$source,tblAnnot$cond,sep='')
+tblAnnot$gamma <- sgAnnot[tblAnnot$sgRNA,"gamma"]
+tblAnnot$tau <- sgAnnot[tblAnnot$sgRNA,"tau"]
+tblAnnot$rho <- sgAnnot[tblAnnot$sgRNA,"rho"]
+tblAnnot$coverage <- rep(0,nrow(tblAnnot))
+for (i in 1:nrow(tblAnnot)){
+  tryCatch({
+    tblAnnot[i,"coverage"] <- coverageTblCmp[tblAnnot[i,"sourceCond"],tblAnnot[i,"sgRNA"]]
+  }, error = function(e) {
+    print(e)
+  })
+}
+tblAnnot$sgRNACond = paste(tblAnnot$sgRNA,tblAnnot$cond,sep='_')
+
+go_categories = read.table(GO_CATEGORIES, sep = ",")
+colnames(go_categories) = c("Gene", "GO")
+rownames(go_categories) = go_categories$Gene
+tblAnnot$go_term = go_categories[tblAnnot$sgRNA, "GO"]
+rownames(tblAnnot) = paste(tblAnnot$source, tblAnnot$sgRNA, sep = "_")
+
+write.table(tblAnnot, paste(OUTPUT_DIR, "/", "RT_annotation_table.txt", sep = ""), sep = "\t")
 
 # Cluster the log fold changes into gene modules
 
