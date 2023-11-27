@@ -33,13 +33,13 @@ library(dplyr)
 ##############################################################################
 # Inputs:
 
-PATH_TO_SEURAT_OBJECT = ""
-EXP_CONTEXT = ""
-SORTED_IDENTITIES = c("")
+PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/downsampled_objects/GL261_integrated_downsampled_20230819.rds"
+EXP_CONTEXT = "CED"
+SORTED_IDENTITIES = c("MACSFACS")
 SORTED_IDENTITES_ONLY = FALSE
-NT_GUIDES = c("")
-IGNORE_GUIDES = c("")
-OUTPUT_DIR = ""
+NT_GUIDES = c("non-targeting")
+IGNORE_GUIDES = c("NA_RT", "NA_noRT", "non-targeting_B_RT", "non-targeting_B_noRT")
+OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230819_ced_noRTNormalized_downsampled_all"
 SEED = 5220
 NORMALIZE_TO_NT_NORT = TRUE
 MINIMUM_COVERAGE = 5
@@ -110,7 +110,7 @@ find_deseq_differential_genes = function(data.obj, seed, group1, group2, group_c
   set.seed(seed)
   
   # Set futures to greater than max capacity; you may need to tweak this
-  options(future.globals.maxSize = 5000 * 1024^2)
+  options(future.globals.maxSize = 8000 * 1024^2)
   
   df = findDE(object = data.obj, group_column = group_column,
                compare = c(group1, group2), method = 'deseq')
