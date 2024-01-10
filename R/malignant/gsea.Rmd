@@ -1,13 +1,8 @@
-# R-GSEA - GL261 Edition
+# GL261 Analysis: Gene Set Enrichment Analysis (GSEA)
 
-Set libpaths
+This vignette contains code for generating and plotting GSEA results on GL261 DESeq output stored in a directory called `data/malignant/deseq/invitro`. Note that this example runs on DESeq for cells labeled `noRT`, meaning they didn't receive radiation.
 
-```{r}
-# Set libpaths
-.libPaths(c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb/renv/library/R-4.3/x86_64-pc-linux-gnu", .libPaths()))
-```
-
-Import libraries
+Import libraries:
 
 ```{r}
 library(Seurat)
@@ -31,18 +26,19 @@ library(RColorBrewer)
 library(reactome.db)
 library(annotables)
 library(biomaRt)
+set.seed(0)
 ```
 
-Define a bunch of constants.
+Define constants:
 
 ```{r}
-INPUT_DIRS <- c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_ced_noRTNormalized_all")
-CONTEXT <- "preinf"
+INPUT_DIRS <- c("data/malignant/deseq/invitro")
+CONTEXT <- "invitro"
 CONDITION <- "RT"
-OUTPUT_DIR <- sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/gsea/noRTNormalized/%s/%s", CONTEXT, CONDITION)
+OUTPUT_DIR <- sprintf("data/malignant/gsea/%s/%s", CONTEXT, CONDITION)
 ```
 
-Import the DESeq output
+Import the DESeq output:
 
 ```{r}
 data.list <- list()
@@ -56,7 +52,7 @@ for (dir in INPUT_DIRS) {
 }
 ```
 
-Separate out RT and noRT use cases
+Separate out RT and noRT use cases:
 
 ```{r}
 noRT.indices <- grepl("_noRT_non-targeting_noRT", names(data.list))
@@ -92,7 +88,7 @@ for (name in names(data.list.symbols)) {
 write.table(missing.genes[[1]], file = paste(OUTPUT_DIR, "missing_genes.txt", sep = "/"), row.names = FALSE, quote = FALSE)
 ```
 
-Get rid of anything that shows low expression:
+Remove any genes that don't pass DESeq's independent filtering, indicated by having an NA p-value or adjusted p-value:
 
 ```{r}
 processed.deseq.tables <- list()
@@ -142,7 +138,7 @@ for (name in names(ranked_gene_set_list)) {
 saveRDS(fgsea.output.list, paste(OUTPUT_DIR, "fgsea_ensembl_ontology_list.rds", sep = "/"))
 ```
 
-Plot the enrichment results on a heatmap
+Plot the enrichment results on a heatmap:
 
 ```{r}
 extracted_cols <- lapply(names(fgsea.output.list), function(name) {
@@ -179,11 +175,6 @@ combined.df$log10pvalue <- -log10(combined.df$padj)
 combined.df$Perturbations <- gsub("_non-targeting_noRT", "", combined.df$Perturbations)
 unfiltered.df <- combined.df
 
-# combined.df <- combined.df %>%
-#   group_by(pathway) %>%
-#   filter(any(padj < 0.05)) %>%
-#   ungroup()
-
 combined.df <- combined.df %>%
   group_by(pathway) %>%
   filter(any(padj < 0.05)) %>%
@@ -216,7 +207,6 @@ df.ordered$pathway <- factor(df.ordered$pathway, levels = rownames(es.df)[row_or
 df.ordered$Perturbations <- factor(df.ordered$Perturbations, levels = colnames(es.df)[col_order])
 
 # Add in RT fill bar
-
 df.ordered$RT <- ifelse(grepl("_RT", df.ordered$Perturbations), "RT", "noRT")
 unique_perturbations <- unique(df.ordered$Perturbations)
 
@@ -234,7 +224,6 @@ unique.perturbations <- unique(gsub("_noRT", "", unique_perturbations))
 unique.perturbations <- unique(gsub("_RT", "", unique.perturbations))
 
 # Add in GO fill bar
-
 go_categories = read.table("/raleighlab/data1/liuj/gbm_perturb/analysis/features_48h_GL261_annot2.csv", sep = ",")
 colnames(go_categories) = c("Gene", "GO")
 rownames(go_categories) = go_categories$Gene
@@ -255,7 +244,6 @@ rect.df$numeric_xmin <- as.numeric(as.factor(rect.df$xmin)) - 0.5
 rect.df$numeric_xmax <- as.numeric(as.factor(rect.df$xmax)) + 0.5
 
 # Hard coded color mapping for consistency
-
 term.color.map <- list(
   `Mitosis` = "#A6CEE3",
   `Translation` = "#1F78B4",
@@ -273,7 +261,6 @@ term.color.map <- list(
 )
 
 # Add in screening phenotype annotations
-
 phenoTbl <- read.table("/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_1+2_results_table.txt",sep='\t',header=TRUE,row.names=1)
 coverageTbl <- read.table('/raleighlab/data1/liuj/gbm_perturb/analysis/gbm_pdx_perturb_GL261_integrate_xfp/pdx_perturb_GL261_concordant_sgRNAs.txt',header=TRUE,sep='\t')
 coverageTblCmp <- rbind(invitronoRT = apply(coverageTbl[c("GL261_48hit_noRT_1","GL261_48hit_noRT_2"),],2,sum),
@@ -384,70 +371,10 @@ combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annota
   subtitle = paste(CONTEXT, CONDITION, "noRTNormalized")
 )
 ggsave(paste(OUTPUT_DIR, "enrichment_bubble_plot_fgsea_3.pdf", sep = "/"),
-       combined.plot, height = 13, width = 13, device = pdf)
+       combined.plot, height = 13, width = 14, device = pdf)
 ```
 
-Keeping track of what dimensions we want for each combination:
-
-```{r}
-# CED noRT, size 2-6
-# vertical.plot <- gamma.plot / tau.plot / rho.plot / perturb.dendrogram / bubble.plot + plot_layout(heights = c(0.5, 0.5, 0.5, 0.5, 3))
-# dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heights = c(0.85, 1))
-# combined.plot <- dendrogram.vertical.plot | vertical.plot
-# combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annotation(
-#   title = "Enrichment of Hallmark pathways across perturbations",
-#   subtitle = paste(CONTEXT, CONDITION, "noRTNormalized")
-# )
-# ggsave(paste(OUTPUT_DIR, "enrichment_bubble_plot_fgsea.pdf", sep = "/"),
-#        combined.plot, height = 13, width = 14, device = pdf)
-
-# CED RT, size 2-7
-# vertical.plot <- gamma.plot / tau.plot / rho.plot / perturb.dendrogram / bubble.plot + plot_layout(heights = c(0.5, 0.5, 0.5, 0.5, 3))
-# dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heights = c(0.85, 1))
-# combined.plot <- dendrogram.vertical.plot | vertical.plot
-# combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annotation(
-#   title = "Enrichment of Hallmark pathways across perturbations",
-#   subtitle = paste(CONTEXT, CONDITION, "noRTNormalized")
-# )
-# ggsave(paste(OUTPUT_DIR, "enrichment_bubble_plot_fgsea.pdf", sep = "/"),
-#        combined.plot, height = 13, width = 12, device = pdf)
-
-# preinf RT, size 2-7
-# vertical.plot <- gamma.plot / tau.plot / rho.plot / perturb.dendrogram / bubble.plot + plot_layout(heights = c(0.5, 0.5, 0.5, 0.5, 3))
-# dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heights = c(0.85, 1))
-# combined.plot <- dendrogram.vertical.plot | vertical.plot
-# combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annotation(
-#   title = "Enrichment of Hallmark pathways across perturbations",
-#   subtitle = paste(CONTEXT, CONDITION, "noRTNormalized")
-# )
-# ggsave(paste(OUTPUT_DIR, "enrichment_bubble_plot_fgsea.pdf", sep = "/"),
-#        combined.plot, height = 13, width = 13, device = pdf)
-# preinf noRT same as above
-
-# invitro noRT
-# vertical.plot <- gamma.plot / tau.plot / rho.plot / perturb.dendrogram / bubble.plot + plot_layout(heights = c(0.5, 0.5, 0.5, 0.5, 3))
-# dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heights = c(0.85, 1))
-# combined.plot <- dendrogram.vertical.plot | vertical.plot
-# combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annotation(
-#   title = "Enrichment of Hallmark pathways across perturbations",
-#   subtitle = paste(CONTEXT, CONDITION, "noRTNormalized")
-# )
-# ggsave(paste(OUTPUT_DIR, "enrichment_bubble_plot_fgsea.pdf", sep = "/"),
-#        combined.plot, height = 13, width = 14, device = pdf)
-
-# invitro RT
-# vertical.plot <- gamma.plot / tau.plot / rho.plot / perturb.dendrogram / bubble.plot + plot_layout(heights = c(0.5, 0.5, 0.5, 0.5, 3))
-# dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heights = c(0.85, 1))
-# combined.plot <- dendrogram.vertical.plot | vertical.plot
-# combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annotation(
-#   title = "Enrichment of Hallmark pathways across perturbations",
-#   subtitle = paste(CONTEXT, CONDITION, "noRTNormalized")
-# )
-# ggsave(paste(OUTPUT_DIR, "enrichment_bubble_plot_fgsea.pdf", sep = "/"),
-#        combined.plot, height = 13, width = 14, device = pdf)
-```
-
-### Basic Analysis Questions:
+### GSEA Analysis Questions:
 
 ```{r}
 analysis.df <- merge(unfiltered.df, annotation.table, on = "Perturbations")
@@ -467,68 +394,4 @@ hallmark.grouped <- analysis.df %>%
   summarize(n_perturb_significant = sum(padj < 0.05, na.rm = TRUE)) %>%
   complete(pathway, fill = list(n_perturb_significant = 0))
 write.table(hallmark.grouped, file = paste(OUTPUT_DIR, "sig_counts_hallmark_grouped.txt", sep = "/"), row.names = FALSE, quote = FALSE)
-```
-
-### Export the Analysis Matrix per Pathway too:
-
-```{r}
-```
-
-### Creating a Correlation Matrix
-
-```{r}
-nt.df <- read.table("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_ced_noRTNormalized_all/CED_non-targeting_RT_non-targeting_noRT.csv")
-View(nt.df
-     )
-```
-
-```{r}
-empty_plot <- ggplot() + theme_void()
-combined.plot <- (empty_plot | plot_layout(ncol = 1, nrow = 1)) / 
-                 (perturb.dendrogram | plot_layout(ncol = 1, nrow = 1)) / 
-                 (module.dendrogram | bubble.plot + plot_layout(ncol = 1, nrow = 1)) / 
-                 (empty_plot | plot_layout(ncol = 1, nrow = 1))
-layout_matrix <- rbind(
-  c(1, 2, 1),
-  c(3, 4, NA),
-  c(1, NA, NA)
-)
-combined.plot <- combined.plot + plot_layout(design = layout_matrix)
-```
-
-```{r}
-perturb.dendrogram
-```
-
-```{r}
-perturb.dendrogram + coord_flip() + scale_x_reverse()
-```
-
-```{r}
-write.table(sgAnnot, paste(OUTPUT_DIR, "screen_phenotypes.txt", sep = "/"), sep = "\t")
-```
-
-```{r}
-# Inspecting some GSEA results that didn't look quite right
-
-ced.nt.table <- read.table("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_ced_noRTNormalized_all/CED_non-targeting_RT_non-targeting_noRT.csv")
-ced.nt.table <- ced.nt.table[c("feature", "log_fc", "padj", "pvalue")]
-ced.nt.table <- ced.nt.table[!is.na(ced.nt.table$pvalue), ]
-ced.nt.table <- ced.nt.table[!is.na(ced.nt.table$padj), ]
-colnames(ced.nt.table) <- c("feature", "ced_log_fc", "ced_padj", "ced_pvalue")
-
-preinf.nt.table <- read.table("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_preinf_noRTNormalized_sorted/preinf_non-targeting_RT_non-targeting_noRT.csv")
-preinf.nt.table <- preinf.nt.table[c("feature", "log_fc", "padj", "pvalue")]
-preinf.nt.table <- preinf.nt.table[!is.na(preinf.nt.table$pvalue), ]
-preinf.nt.table <- preinf.nt.table[!is.na(preinf.nt.table$padj), ]
-colnames(preinf.nt.table) <- c("feature", "preinf_log_fc", "preinf_padj", "preinf_pvalue")
-
-invitro.nt.table <- read.table("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_invitro_noRTNormalized_all/invitro_non-targeting_RT_non-targeting_noRT.csv")
-invitro.nt.table <- invitro.nt.table[c("feature", "log_fc", "padj", "pvalue")]
-invitro.nt.table <- invitro.nt.table[!is.na(invitro.nt.table$pvalue), ]
-invitro.nt.table <- invitro.nt.table[!is.na(invitro.nt.table$padj), ]
-colnames(invitro.nt.table) <- c("feature", "invitro_log_fc", "invitro_padj", "invitro_pvalue")
-
-all.df <- merge(ced.nt.table, preinf.nt.table, by = "feature")
-all.df <- merge(all.df, invitro.nt.table, by = "feature")
 ```

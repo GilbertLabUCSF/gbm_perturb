@@ -1,13 +1,8 @@
-# Genome Biology paper plotting
+# GL261 Analysis: Counting DE genes
 
-This notebook contains plotting code for the *Genome Biology in vivo* perturb-seq resubmission.
+This vignette contains code for counting the number of differentially expressed genes for GL261 DESeq output stored in a directory called `data/malignant/deseq/invitro`.
 
-```{r}
-# Set libpaths
-.libPaths(c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb/renv/library/R-4.3/x86_64-pc-linux-gnu", .libPaths()))
-```
-
-Import libraries
+Import libraries:
 
 ```{r}
 library(Seurat)
@@ -27,14 +22,13 @@ library(patchwork)
 library(RColorBrewer)
 ```
 
-Import the differential expression data from a condition of choice
+Import the differential expression data from a condition of choice:
 
 ```{r}
 CONTEXT <- "invitro"
-NORMALIZATION <- "noRTNormalized"
-OUTPUT_DIR <- sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/downsampled_gene_plots/%s/%s", NORMALIZATION, CONTEXT)
+OUTPUT_DIR <- sprintf("data/malignant/de_genes/%s", NORMALIZATION, CONTEXT)
 INPUT_DIRS <- c(
-  "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20231130_invitro_noRTNormalized_RTnoRTDownsampled_all"
+  sprintf("data/malignant/deseq/%s", CONTEXT)
 )
 data.list <- list()
 for (dir in INPUT_DIRS) {
@@ -53,7 +47,7 @@ Construct a dataframe that has RT and noRT numbers of DE genes in its columns. C
 
 -   LFC \> 0.1
 
-Along with expression filters (genes must have a valid log_fc, p-value, and p-adjusted value).
+Along with expression filters (genes must have a valid log_fc, p-value, and p-adjusted value):
 
 ```{r}
 RT.df <- data.frame()
@@ -87,7 +81,7 @@ all.df$n.degenes.noRT <- as.numeric(all.df$n.degenes.noRT)
 write.table(all.df, file = paste(OUTPUT_DIR, sprintf("%s_de_genes.txt", CONTEXT), sep = "/"), row.names = FALSE, quote = FALSE)
 ```
 
-Create a plot that shows the differential expression across perturbations across conditions.
+Create a plot that shows the differential expression across perturbations across conditions:
 
 ```{r}
 degenes.plot <- ggplot(all.df, aes(x = perturb)) +
