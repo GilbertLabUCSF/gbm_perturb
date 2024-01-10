@@ -32,9 +32,9 @@ Import the differential expression data from a condition of choice
 ```{r}
 CONTEXT <- "invitro"
 NORMALIZATION <- "noRTNormalized"
-OUTPUT_DIR <- sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/gene_plots/%s/%s", NORMALIZATION, CONTEXT)
+OUTPUT_DIR <- sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/downsampled_gene_plots/%s/%s", NORMALIZATION, CONTEXT)
 INPUT_DIRS <- c(
-  "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_invitro_noRTNormalized_all"
+  "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20231130_invitro_noRTNormalized_RTnoRTDownsampled_all"
 )
 data.list <- list()
 for (dir in INPUT_DIRS) {
@@ -52,6 +52,8 @@ Construct a dataframe that has RT and noRT numbers of DE genes in its columns. C
 -   P-adj \< 0.05
 
 -   LFC \> 0.1
+
+Along with expression filters (genes must have a valid log_fc, p-value, and p-adjusted value).
 
 ```{r}
 RT.df <- data.frame()
@@ -82,6 +84,7 @@ all.df <- merge(RT.df, noRT.df, on = "perturb", all.x = TRUE, all.y = TRUE)
 all.df[is.na(all.df)] <- 0
 all.df$n.degenes.RT <- as.numeric(all.df$n.degenes.RT)
 all.df$n.degenes.noRT <- as.numeric(all.df$n.degenes.noRT)
+write.table(all.df, file = paste(OUTPUT_DIR, sprintf("%s_de_genes.txt", CONTEXT), sep = "/"), row.names = FALSE, quote = FALSE)
 ```
 
 Create a plot that shows the differential expression across perturbations across conditions.
@@ -89,9 +92,9 @@ Create a plot that shows the differential expression across perturbations across
 ```{r}
 degenes.plot <- ggplot(all.df, aes(x = perturb)) +
   # Add the RT layer
-  geom_point(aes(y = n.degenes.RT, size = n.degenes.RT), color = "red", alpha = 0.5) +
+  geom_point(aes(y = n.degenes.RT, size = ifelse(n.degenes.RT == 0, NA, n.degenes.RT)), color = "red", alpha = 0.5) +
   # Add the noRT layer
-  geom_point(aes(y = n.degenes.noRT, size = n.degenes.noRT), color = "blue", alpha = 0.5) +
+  geom_point(aes(y = n.degenes.noRT, size = ifelse(n.degenes.noRT == 0, NA, n.degenes.noRT)), color = "blue", alpha = 0.5) +
   scale_size(range = c(0.5, 3)) +
   # Labels
   labs(
@@ -101,8 +104,8 @@ degenes.plot <- ggplot(all.df, aes(x = perturb)) +
     size = "Number of DE genes",
     y = "Number of DE Genes"
   ) + 
-  geom_text(aes(label = "n = 10", x = Inf, y = 10), hjust = "inward", vjust = -1) +
-  geom_hline(yintercept = 10, linetype = "dotted", color = "black") +
+  geom_text(aes(label = "n = 100", x = Inf, y = 10), hjust = "inward", vjust = -1) +
+  geom_hline(yintercept = 100, linetype = "dotted", color = "black") +
   scale_color_identity(name = "Treatment Condition", 
                      breaks = c("red", "blue"), 
                      labels = c("RT", "noRT"), 
@@ -113,6 +116,6 @@ degenes.plot <- ggplot(all.df, aes(x = perturb)) +
         panel.grid.minor = element_blank(),
         axis.line = element_line(colour = "black"),
         legend.key = element_blank())
-ggsave(paste(OUTPUT_DIR, "de_genes_bubble_plot.png", sep = "/"),
-       degenes.plot, height = 4, width = 10)
+ggsave(paste(OUTPUT_DIR, "de_genes_bubble_plot.pdf", sep = "/"),
+       degenes.plot, height = 3.5, width = 10, device = pdf)
 ```

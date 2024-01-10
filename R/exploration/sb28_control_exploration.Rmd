@@ -1,0 +1,180 @@
+# SB28 Control Exploration
+
+Libpaths
+
+```{r}
+.libPaths(c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb/renv/library/R-4.3/x86_64-pc-linux-gnu", .libPaths()))
+```
+
+```{r}
+library(Seurat)
+library(DElegate)
+library(dplyr)
+library(ggplot2)
+```
+
+Investigate the control groups for the microenvironment experiment.
+
+```{r}
+data <- readRDS(
+  "/raleighlab/data1/liuj/gbm_perturb/analysis/SB28_micro_3_all_20231209.Rds"
+)
+```
+
+## Generate DE genes
+
+What do we want to test? We want to find differences between cells that are sorted, but have no guides, and cells that are sorted, but have the guides that we want. That means we want to run DESeq for cells that have `sgRNA_binary == FALSE && sorted == TRUE`.
+
+```{r}
+data.sorted <- subset(data, sorted == "sort")
+data.sorted@meta.data <- data.sorted@meta.data %>% mutate(sgRNA_full = ifelse(is.na(sgRNA_full) & sgRNA_binary == FALSE, "unidentified_guide", sgRNA_full))
+```
+
+Now we can define our normal DESeq functions:
+
+```{r}
+find.deseq.differential.genes = function(data.obj, seed, group1, group2, group.column=NULL) {
+  # Takes in a normalized Seurat object with metadata
+  # indicating group1 and group2 and a group_column argument
+  # indicating the metadata column to be used. Sets a seed, then
+  # finds differential expressed genes and outputs a data frame.
+  # Note that log fold comparisons will be output as log2(group1/group2)
+  set.seed(seed)
+  
+  # Set futures to greater than max capacity; you may need to tweak this
+  options(future.globals.maxSize = 5000 * 1024^2)
+  
+  df = findDE(object = data.obj, group_column = group.column,
+              compare = c(group1, group2), method = 'deseq')
+  return(df)
+}
+
+build.filename = function(group1, group2) {
+  filename = paste(group1, group2, sep = "_")
+  directory = paste(OUTPUT.DIR, "/", sep = "")
+  extension = ".csv"
+  return(paste(directory, filename, extension, sep = ""))
+}
+```
+
+Clean things up:
+
+```{r}
+data.sorted$scMRMA_manual <- gsub("Oligodendrocyte progenitor cells", "OPCs", data.sorted$scMRMA_manual)
+```
+
+Define some saving information:
+
+```{r}
+OUTPUT.DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_outputs/deseq/SB28_integrated_20231207_ME"
+SEED = 5220
+DESIRED.CELL.TYPES = c("SB28", "Oligodendrocytes", "Astrocytes",
+                       "Microglia", "Macrophages", "OPCs")
+```
+
+```{r}
+for (cell.type in DESIRED.CELL.TYPES) {
+  data.cell.type <- subset(data.sorted, scMRMA_manual == cell.type)
+  output.dir <- sprintf("%s/%s/%s", OUTPUT.DIR, "sgRNA_full_unidentified_guides", cell.type)
+  print(sprintf("Outputting %s sgRNA_full deseq into %s", cell.type, output.dir))
+  perturbations <- unique(data.cell.type$sgRNA_full)
+  perturbations <- perturbations[!perturbations == "unidentified_guide"]
+  perturbations <- perturbations[!is.na(perturbations)]
+  found = FALSE
+  for (perturb in perturbations) {
+    tryCatch({
+      df.deseq <- find.deseq.differential.genes(
+        data.cell.type,
+        SEED,
+        perturb,
+        "unidentified_guide",
+        group.column = "sgRNA_full"
+      )
+      found = TRUE
+    }, error = function(err) {
+      print(sprintf("Failed to get model because of %s in %s", err, perturb))
+    })
+    if (found) {
+      write.table(df.deseq, sprintf("%s/%s_%s.csv",
+                                    output.dir,
+                                    perturb,
+                                    "unidentified_guide"))
+    }
+  }
+}
+```
+
+## Investigate DE genes
+
+```{r}
+INPUT.DIR.BASE <- "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_outputs/deseq/SB28_integrated_20231207_ME/sgRNA_full_unidentified_guides"
+INPUT.DIRS <- list.dirs(INPUT.DIR.BASE)[-1]
+OUTPUT.DIR <- "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_outputs/de_genes/SB28_integrated_ME/sgRNA_full_unidentified_guides/combined"
+```
+
+```{r}
+data.list.symbols <- list()
+for (dir in INPUT.DIRS) {
+  file_names <- list.files(dir)
+  split.string <- strsplit(dir, "/")[[1]]
+  cell.type <- tail(split.string, 1)
+  for (i in file_names) {
+    name <- gsub(".csv", "", i)
+    name <- paste(cell.type, name, sep = "_")
+    df <- read.table(paste(dir, "/", i, sep = ""))
+    data.list.symbols[[name]] <- df
+  }
+}
+```
+
+Figure out how many DE genes there are by:
+
+-   Removing all NA pvalues/padj (this takes the place of an expression filter)
+
+-   Log fold change must have an absolute value of \> 0.5
+
+-   padj value must be less than 0.5
+
+```{r}
+processed.deseq.tables <- list()
+for (name in names(data.list.symbols)) {
+  deseq_table <- data.list.symbols[[name]]
+  deseq_table <- deseq_table[!is.na(deseq_table$pvalue), ]
+  deseq_table <- deseq_table[!is.na(deseq_table$padj), ]
+  deseq_table <- deseq_table[deseq_table$padj < 0.05, ]
+  deseq_table <- deseq_table[abs(deseq_table$log_fc) > 0.5, ]
+  processed.deseq.tables[[name]] <- deseq_table
+}
+data.list <- processed.deseq.tables
+```
+
+How many DE genes are there per perturbation per cell per guide?
+
+```{r}
+result_df <- do.call("rbind", lapply(names(data.list), function(comparison) {
+  df <- data.list[[comparison]]
+  n_degenes <- nrow(df)
+  avg_log_fc <- mean(abs(df$log_fc))
+  data.frame(comparison = comparison, n_degenes = n_degenes, average_log_fc = avg_log_fc)
+}))
+result_df$n_degenes_ceiling <- pmin(result_df$n_degenes, 4000)
+write.table(result_df, file = sprintf("%s/de_gene_info.txt", OUTPUT.DIR), sep = "\t")
+```
+
+Plot the number of DE genes per perturbation per cell:
+
+```{r}
+result_df$comparison <- gsub("_unidentified_guide", "", result_df$comparison)
+plot <- ggplot(result_df, aes(x = comparison,
+                              y = n_degenes_ceiling)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  
+ggsave(sprintf("%s/de_gene_plot.png", OUTPUT.DIR), plot, height = 10, width = 20)
+```
+
+## Export Script
+
+```{r}
+knitr::purl("/raleighlab/data1/czou/gbm_perturb/gbm_perturb/R/exploration/sb28_control_exploration.Rmd", output = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb/R/exploration/sb28_control_exploration.R")
+```

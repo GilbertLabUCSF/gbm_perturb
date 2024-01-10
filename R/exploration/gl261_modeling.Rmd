@@ -1,0 +1,130 @@
+# GL261 Treatment-Perturbation Modeling
+
+Set libpaths so we have access to `Renv`:
+
+```{r}
+.libPaths(c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb/renv/library/R-4.3/x86_64-pc-linux-gnu", .libPaths()))
+```
+
+Import libraries:
+
+```{r}
+library(Seurat)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(knitr)
+library(msigdbr)
+library(fgsea)
+library(dplyr)
+library(data.table)
+library(ggplot2)
+library(ggrepel)
+library(grid)
+library(ComplexHeatmap)
+library(colorRamp2)
+library(tidyr)
+library(patchwork)
+library(ggtree)
+library(gridExtra)
+library(ape)
+library(RColorBrewer)
+library(reactome.db)
+library(annotables)
+library(biomaRt)
+```
+
+Define some constants from which to import files
+
+```{r}
+CONTEXT <- "preinf"
+CONDITION <- "RT"
+SORTED <- "sorted"
+DESEQ_INPUT_DIRS <- c(sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_%s_noRTNormalized_%s", CONTEXT, SORTED))
+RT_GSEA_INPUT <- sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/gsea/noRTNormalized/%s/RT/fgsea_ensembl_ontology_list.rds", CONTEXT)
+NORT_GSEA_INPUT <- sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/gsea/noRTNormalized/%s/noRT/fgsea_ensembl_ontology_list.rds", CONTEXT)
+OUTPUT_DIR <- sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/modeling/%s", CONTEXT)
+```
+
+## Linear Modeling
+
+For each perturbation for which we have sufficient data in this context, construct a linear model *[x, y]* of the form [pathway enrichment scores, perturb_only]*x* + [pathway enrichment scores, RT_only]*y* = [pathway enrichment scores, perturb_RT]. The underlying goal is to model how our treatment and perturbation effects interact.
+
+```{r}
+fgsea.output.list.RT <- readRDS(RT_GSEA_INPUT)
+fgsea.output.list.noRT <- readRDS(NORT_GSEA_INPUT)
+
+pathway.perturbRT.matrix <- do.call(cbind, lapply(fgsea.output.list.RT, function(df) {
+  setNames(df$ES, df$pathway)
+}))
+colnames(pathway.perturbRT.matrix) <- gsub("_non-targeting_noRT", "", colnames(pathway.perturbRT.matrix))
+colnames(pathway.perturbRT.matrix) <- gsub(paste(CONTEXT, "_", sep = ""), "", colnames(pathway.perturbRT.matrix))
+colnames(pathway.perturbRT.matrix) <- gsub("_RT", "", colnames(pathway.perturbRT.matrix))
+
+pathway.perturbNoRT.matrix <- do.call(cbind, lapply(fgsea.output.list.noRT, function(df) {
+  setNames(df$ES, df$pathway)
+}))
+colnames(pathway.perturbNoRT.matrix) <- gsub("_non-targeting_noRT", "", colnames(pathway.perturbNoRT.matrix))
+colnames(pathway.perturbNoRT.matrix) <- gsub(paste(CONTEXT, "_", sep = ""), "", colnames(pathway.perturbNoRT.matrix))
+colnames(pathway.perturbNoRT.matrix) <- gsub("_noRT", "", colnames(pathway.perturbNoRT.matrix))
+
+nt.RT.vector <- pathway.perturbRT.matrix[, "non-targeting"]
+
+# Construct A, B, and C such that Ax + By = C. A is the pathway x perturb_noRT matrix, B is the repeated pathway x nt_RT matrix, and C is the pathway x perturb_RT matrix
+
+col_to_remove <- grep("non-targeting", colnames(pathway.perturbRT.matrix))
+A <- pathway.perturbNoRT.matrix
+C <- pathway.perturbRT.matrix[, -col_to_remove]
+shared.cols <- intersect(colnames(A), colnames(C))
+A <- A[, shared.cols]
+C <- C[, shared.cols]
+B <- replicate(length(shared.cols), nt.RT.vector)
+
+n_cols <- ncol(A)
+coefficients.list <- list()
+r.squared.list <- list()
+
+for (i in 1:n_cols) {
+    # Extract the ith columns from A, B, and C
+    perturb <- colnames(A)[i]
+    A.col <- A[, i]
+    B.col <- B[, i]
+    C.col <- C[, i]
+
+    # Create the model
+    model <- lm(C.col ~ A.col + B.col)
+
+    # Store coefficients and R^2 value
+    coefficients.list[[perturb]] <- coef(model)
+    r.squared.list[[perturb]] <- summary(model)$r.squared
+}
+```
+
+Plot the coefficients so that we can see what their distribution is like
+
+```{r}
+coefficients.df <- do.call(rbind, coefficients.list)
+coefficients.df <- as.data.frame(coefficients.df)
+colnames(coefficients.df) <- c("intercept", "x1", "x2")
+coefficients.df$perturb <- rownames(coefficients.df)
+coefficients.df$r2 <- signif(unlist(r.squared.list), digits = 3)
+coefficients.df$perturb.r2 <- paste(coefficients.df$perturb, coefficients.df$r2, sep = " - ")
+
+plot <- ggplot(coefficients.df, aes(x = x1, y = x2)) +
+  geom_point() +
+  geom_text_repel(aes(label = perturb.r2),
+                    size = 2.5,
+                    box.padding   = 0.5, 
+                    point.padding = 0.5,
+                    segment.color = 'grey50') +
+  labs(title = "Scatterplot of X - Perturb vs. Y - Radiation, with R^2 attached", 
+       subtitle = CONTEXT, x = "Perturb", y = "RT") +
+  theme(
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.key.height = unit(0.3, 'cm'),
+        axis.line = element_line(colour = "black"),
+        legend.key = element_blank()
+        )
+ggsave(paste(OUTPUT_DIR, "linear_coefficient_scatter.pdf", sep = "/"), plot = plot, device = pdf, height = 8, width = 8)
+```

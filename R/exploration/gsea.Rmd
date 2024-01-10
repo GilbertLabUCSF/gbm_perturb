@@ -28,7 +28,9 @@ library(ggtree)
 library(gridExtra)
 library(ape)
 library(RColorBrewer)
-# library(reactome.db)
+library(reactome.db)
+library(annotables)
+library(biomaRt)
 ```
 
 Define a bunch of constants.
@@ -39,6 +41,8 @@ OUTPUT_DIR <- "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_explore_outp
 PATH_TO_SEURAT_OBJECT <- "/raleighlab/data1/liuj/gbm_perturb/analysis/GBM43_1_malignant_only_annotated_20230817.Rds"
 WORKING_DIR <- "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_explore_outputs/gsea/noRTNormalized"
 ```
+
+## Massage the DESeq2 Output
 
 Import the DESeq output
 
@@ -52,6 +56,51 @@ for (dir in INPUT_DIRS) {
     data.list[[name]] <- df
   }
 }
+```
+
+Remove the GRCh38- prefix from all human genes.
+
+```{r}
+data.list.symbols <- list()
+for (name in names(data.list)) {
+  deseq_table <- data.list[[name]]
+  deseq_table$feature <- gsub("GRCh38-", "", deseq_table$feature)
+  data.list.symbols[[name]] <- deseq_table
+}
+```
+
+Prepare an ENSEMBL gene ID data list by converting using the `annotables` package.
+
+```{r}
+mapping.df <- annotables::grch38
+missing.genes <- list()
+data.list.ensembl <- list()
+for (name in names(data.list.symbols)) {
+  deseq_table <- data.list.symbols[[name]]
+  mapping.df <- mapping.df[!duplicated(mapping.df$symbol), ]
+  mapping.table <- mapping.df[mapping.df$symbol %in% deseq_table$feature, ]
+  mapping.table <- as.data.frame(mapping.table)
+  rownames(mapping.table) <- mapping.table$symbol
+  deseq_table$ensembl <- mapping.table[deseq_table$feature, "ensgene"]
+  deseq_table.missing <- deseq_table[is.na(deseq_table$ensembl), ]
+  missing.genes[[name]] <- deseq_table.missing$feature
+  data.list.ensembl[[name]] <- deseq_table[!is.na(deseq_table$ensembl), ]
+}
+```
+
+## Run GSEA on HALLMARK DB
+
+Get rid of anything that shows low expression:
+
+```{r}
+processed.deseq.tables <- list()
+for (name in names(data.list.ensembl)) {
+  deseq_table <- data.list.ensembl[[name]]
+  deseq_table <- deseq_table[!is.na(deseq_table$pvalue), ]
+  deseq_table <- deseq_table[!is.na(deseq_table$padj), ]
+  processed.deseq.tables[[name]] <- deseq_table
+}
+data.list <- processed.deseq.tables
 ```
 
 For each DESeq output, prepare an ordered gene set by LFC that we will use for gene set enrichment analysis. Note that we remove the GRCh38- prefix from all human genes and remove any genes that have an NA LFC. We also change from gene symbol to ENSEMBL gene ID and remove unmappable symbols, averaging out the LFCs for multiple symbols that map to the same ENSEMBL gene ID.
@@ -249,8 +298,8 @@ ht = Heatmap(combined.df,
         col = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
         cluster_column_slices = FALSE,
         cluster_columns = TRUE,
-        width = ncol(combined_df)*unit(4, "mm"),
-        height = nrow(combined_df)*unit(4, "mm"),
+        width = ncol(combined.df)*unit(4, "mm"),
+        height = nrow(combined.df)*unit(4, "mm"),
 )
 pdf(paste(OUTPUT_DIR, "enrichment_combined_matrix.pdf", sep = "/"),
     width=35,
@@ -275,7 +324,7 @@ combined.df <- combined.df %>%
   ungroup()
 
 es.df <- combined.df %>%
-  select(-pval, -padj, -log2err, -NES, -size, -leadingEdge, -log10pvalue)
+  dplyr::select(-pval, -padj, -log2err, -NES, -size, -leadingEdge, -log10pvalue)
 
 es.df <- es.df %>%
   group_by(pathway, Perturbations) %>%
@@ -284,7 +333,7 @@ es.df <- es.df %>%
 
 es.df <- as.data.frame(es.df)
 rownames(es.df) <- es.df$pathway
-es.df <- es.df %>% select(-pathway)
+es.df <- es.df %>% dplyr::select(-pathway)
 
 # Use this section if you want to split by RT/noRT and cluster
 # the columns that way. Note that the rows will still be clustered
@@ -441,6 +490,9 @@ module.dendrogram <- ggtree(as.phylo(row_hclust)) + theme_tree()
 # Use this section if not splitting by RT/noRT
 
 # perturb.dendrogram <- ggtree(as.phylo(col_hclust)) + theme_tree() + coord_flip() + scale_x_reverse()
+# 
+# vertical.plot <- gamma.plot / tau.plot / rho.plot / perturb.dendrogram / bubble.plot + plot_layout(heights = c(0.5, 0.5, 0.5, 0.5, 3))
+# dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heights = c(0.85, 1))
 
 # Use this section if splitting by RT/noRT
 
@@ -455,60 +507,117 @@ combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annota
   title = "Enrichment of Hallmark pathways across perturbations",
   subtitle = "GBM43 CED RT/noRT"
 )
-ggsave(paste(WORKING_DIR, "enrichment_bubble_plot_fgsea.pdf", sep = "/"),
+ggsave(paste(WORKING_DIR, "enrichment_bubble_plot_fgsea_ensembl.pdf", sep = "/"),
        combined.plot, height = 12, width = 18, device = pdf)
 ```
 
-## Try running a lot of this stuff with Reactome
+## Run GSEA with Reactome
 
 ```{r}
 WORKING_DIR <- "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_explore_outputs/gsea/noRTNormalized/reactome"
 ```
 
-Does this make things more interpretable? First, let's run GSEA with Reactome. To do so, we'll have to convert all of our ensemble genes to Entrez gene IDs.
+To better run this, we want to filter the DESeq outputs for each perturbation. According to the [DESeq2 documentation](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#pvaluesNA), rows that don't have adjusted p-values or regular p-values are those that are determined to be one of the following:
+
+-   Genes with low normalized mean count by independent filtering
+
+-   Genes with extreme outlier mean counts by Cook's distance
+
+-   Genes that have zeroes across the board
+
+```{r}
+processed.deseq.tables <- list()
+for (name in names(data.list.ensembl)) {
+  deseq_table <- data.list.ensembl[[name]]
+  deseq_table <- deseq_table[!is.na(deseq_table$pvalue), ]
+  deseq_table <- deseq_table[!is.na(deseq_table$padj), ]
+  processed.deseq.tables[[name]] <- deseq_table
+}
+```
+
+### Load Reactome data
+
+Offline, we can get the Reactome hierarchy information. We also figured out who the top level parents were. The top-level is way too nonspecific—think "Digestion," so let's go one level down in granularity.
+
+```{r}
+hierarchy.data <- read.table(paste(WORKING_DIR, "reactome_2023_hierarchy.txt", sep = "/"),
+                             sep = "\t", header = FALSE, stringsAsFactors = FALSE,
+                             col.names = c("Parent", "Child"))
+
+top.level.parents.path <- paste(WORKING_DIR, "top_level_parents.txt", sep = "/")
+top.level.parents.ids <- readLines(top.level.parents.path)
+
+# Filter out all non-human parents
+top.level.parents.ids <- top.level.parents.ids[grep("-HSA-", top.level.parents.ids)]
+
+# Start finding children to the depth required
+depth1.children.ids <- subset(hierarchy.data, Parent %in% top.level.parents.ids)$Child
+depth2.children.ids <- subset(hierarchy.data, Parent %in% depth1.children.ids)$Child
+
+# Map these children to terms
+path.to.name.map <- as.list(reactome.db::reactomePATHID2NAME)
+depth2.children.names <- unlist(path.to.name.map[depth2.children.ids])
+depth2.children.names <- gsub("Homo sapiens: ", "", depth2.children.names)
+
+depth1.children.names <- unlist(path.to.name.map[depth1.children.ids])
+depth1.children.names <- gsub("Homo sapiens: ", "", depth1.children.names)
+
+write.table(depth1.children.names, paste(WORKING_DIR, "reactome_2023_depth1_children.txt", sep = "/"))
+
+terms <- depth1.children.names
+```
+
+Load all of the ENSEMBL to pathway information and construct a list that maps ENSEMBL pathway name to the genes it represents.
+
+```{r}
+pathway.to.ensembl.data <- read.table(paste(WORKING_DIR, 
+                                   "reactome_2023_ensembl_to_pathway.txt", 
+                                   sep = "/"), 
+                             sep = "\t", header = FALSE, 
+                             stringsAsFactors = FALSE, comment.char = "")
+colnames(pathway.to.ensembl.data) <- c("ensembl", 
+                                       "rtag", "url", "pathway", "annot", "species")
+pathway.to.ensembl.data <- subset(pathway.to.ensembl.data, species == "Homo sapiens")
+pathway.to.ensembl.data <- subset(pathway.to.ensembl.data, pathway %in% terms)
+pathway_to_ensembl <- split(pathway.to.ensembl.data$ensembl, pathway.to.ensembl.data$pathway)
+```
+
+### Run Reactome!
+
+Generate an ordered list from the processed DESeq2 tables
 
 ```{r}
 ranked_gene_set_list <- list()
-for (name in names(data.list)) {
-  cat("Processing", name, "\n")
-  
-  deseq_table <- data.list[[name]]
-  deseq_table$feature <- gsub("GRCh38-", "", deseq_table$feature)
-  mapping <- mapIds(org.Hs.eg.db, keys = deseq_table$feature,
-                      column = "ENTREZID", keytype = "SYMBOL")
-  deseq_table$entrezid <- unlist(mapping)
-  deseq_table <- subset(deseq_table, !is.na(deseq_table$entrezid))
-  # Note that this step separates out the tables to different genes
-  deseq_table <- deseq_table[!is.na(deseq_table$log_fc), ]
-  
-  # Group by unique Entrez ID and average
+for (name in names(processed.deseq.tables)) {
+  deseq_table <- processed.deseq.tables[[name]]
+  # Group by unique Ensembl ID and average
   deseq_table <- deseq_table %>%
-    group_by(entrezid) %>%
+    group_by(ensembl) %>%
     summarize(log_fc = mean(log_fc))
   deseq_table <- deseq_table %>% mutate(rank = rank(log_fc,  ties.method = "random"))
   deseq_table <- deseq_table[order(-deseq_table$rank),] # Rank deterministically
   
   # Generate a ranked list
   gene_list <- deseq_table$log_fc
-  gene_names <- deseq_table$entrezid
+  gene_names <- deseq_table$ensembl
   names(gene_list) <- gene_names
   ranked_gene_set_list[[name]] <- gene_list
 }
 ```
 
-Then, we can use the convenient `reactomePathways` function to get ourselves the pathways that we want.
+Then, we can run GSEA using `fgsea`.
 
 ```{r}
 set.seed(1) # required for deterministic performance
 fgsea.output.list <- list()
 for (name in names(ranked_gene_set_list)) {
   genes <- names(ranked_gene_set_list[[name]])
-  gene.pathways <- reactomePathways(genes)
-  gsea.results <- fgsea(pathways = gene.pathways, stats = ranked_gene_set_list[[name]],
+  pathways <- pathway_to_ensembl
+  gsea.results <- fgsea(pathways = pathway_to_ensembl, stats = ranked_gene_set_list[[name]],
                         maxSize = 500, eps = 0.0) # allow arbitrarily low p-values
   fgsea.output.list[[name]] <- gsea.results
 }
-saveRDS(fgsea.output.list, paste(WORKING_DIR, "fgsea_entrez_reactome_list.rds", sep = "/"))
+saveRDS(fgsea.output.list, paste(WORKING_DIR, "fgsea_ensembl_reactome_list.rds", sep = "/"))
 ```
 
 After that, plot the results in the same way that we plotted the others. Find the union of the top 1% of pathways across all perturbations:
@@ -530,19 +639,19 @@ combined.df <- combined.df %>%
   filter(any(size >= 5)) %>%
   ungroup()
 
-# Find the number of pathways in the top 1% for each perturbation
-combined.df <- combined.df %>%
-  group_by(Perturbations) %>%
-  mutate(total_count = ceiling(n() * 0.01))
-
-# Slice all of the perturbations to that number of pathways
-top.pathways <- combined.df %>%
-  group_by(Perturbations) %>%
-  arrange(desc(abs(ES))) %>%
-  filter(row_number() <= total_count) %>% 
-  ungroup() %>%
-  distinct(pathway) %>%
-  pull(pathway)
+# # Find the number of pathways in the top 1% for each perturbation
+# combined.df <- combined.df %>%
+#   group_by(Perturbations) %>%
+#   mutate(total_count = ceiling(n() * 0.01))
+# 
+# # Slice all of the perturbations to that number of pathways
+# top.pathways <- combined.df %>%
+#   group_by(Perturbations) %>%
+#   arrange(desc(abs(ES))) %>%
+#   filter(row_number() <= total_count) %>% 
+#   ungroup() %>%
+#   distinct(pathway) %>%
+#   pull(pathway)
 ```
 
 Plot a reduced heatmap that can tell us what the enrichment scores look like:
@@ -555,7 +664,7 @@ extracted_cols <- lapply(names(fgsea.output.list), function(name) {
 })
 heatmap.df <- do.call(cbind, extracted_cols)
 colnames(heatmap.df) <- names(fgsea.output.list)
-heatmap.df <- heatmap.df[top.pathways, ]
+# heatmap.df <- heatmap.df[top.pathways, ]
 
 colnames(heatmap.df) <- gsub("_non-targeting_noRT", "", colnames(heatmap.df))
 
@@ -564,12 +673,14 @@ ht = Heatmap(heatmap.df,
         col = colorRamp2(c(-1, 0, 1), c("blue", "white", "red")),
         cluster_column_slices = FALSE,
         cluster_columns = TRUE,
-        width = ncol(heatmap.df)*unit(4, "mm"),
-        height = nrow(heatmap.df)*unit(4, "mm"),
+        width = ncol(heatmap.df)*unit(2, "mm"),
+        height = nrow(heatmap.df)*unit(2, "mm"),
+        row_names_gp = gpar(fontsize = 5),
+        column_names_gp = gpar(fontsize = 5)
 )
-pdf(paste(WORKING_DIR, "enrichment_combined_matrix.pdf", sep = "/"),
-    width=30,
-    height=40,
+pdf(paste(WORKING_DIR, "enrichment_combined_matrix_ensembl.pdf", sep = "/"),
+    width=20,
+    height=50,
     useDingbats=FALSE)
 draw(ht, heatmap_legend_side = "top", annotation_legend_side = "top")
 dev.off()
@@ -594,40 +705,22 @@ combined.df <- combined.df %>%
   filter(any(size >= 5)) %>%
   ungroup()
 
-# Find the number of pathways in the top 1% for each perturbation
-combined.df <- combined.df %>%
-  group_by(Perturbations) %>%
-  mutate(total_count = ceiling(n() * 0.01))
-
-# Slice all of the perturbations to that number of pathways
-top.pathways <- combined.df %>%
-  group_by(Perturbations) %>%
-  arrange(desc(abs(ES))) %>%
-  filter(row_number() <= total_count) %>% 
-  ungroup() %>%
-  distinct(pathway) %>%
-  pull(pathway)
-
-# Take only those pathways into plotting
-combined.df <- subset(combined.df, pathway %in% top.pathways)
-
-
-# Take only the top 10 pathways by enrichment score per perturbation. If there are overlaps, take the union across all of them
-top10.pathways <- combined.df %>%
-  group_by(Perturbations) %>%
-  arrange(desc(abs(ES))) %>%
-  slice_head(n = 10) %>%
-  ungroup() %>%
-  distinct(pathway) %>%
-  pull(pathway)
-
-
-
-combined.df <- combined.df 
-
+# # Find the number of pathways in the top 1% for each perturbation
+# combined.df <- combined.df %>%
+#   group_by(Perturbations) %>%
+#   mutate(total_count = ceiling(n() * 0.01))
+# 
+# # Slice all of the perturbations to that number of pathways
+# top.pathways <- combined.df %>%
+#   group_by(Perturbations) %>%
+#   arrange(desc(abs(ES))) %>%
+#   filter(row_number() <= total_count) %>% 
+#   ungroup() %>%
+#   distinct(pathway) %>%
+#   pull(pathway)
 
 es.df <- combined.df %>%
-  select(-pval, -padj, -log2err, -NES, -size, -leadingEdge, -log10pvalue)
+  dplyr::select(-pval, -padj, -log2err, -NES, -size, -leadingEdge, -log10pvalue)
 
 es.df <- es.df %>%
   group_by(pathway, Perturbations) %>%
@@ -636,44 +729,45 @@ es.df <- es.df %>%
 
 es.df <- as.data.frame(es.df)
 rownames(es.df) <- es.df$pathway
-es.df <- es.df %>% select(-pathway)
+es.df <- es.df %>% dplyr::select(-pathway)
+es.df[is.na(es.df)] <- 0
 
 # Use this section if you want to split by RT/noRT and cluster
 # the columns that way. Note that the rows will still be clustered
 # across them RT/noRT
 
-RT.names <- colnames(es.df)[grepl("_RT", colnames(es.df))]
-noRT.names <- colnames(es.df)[grepl("_noRT", colnames(es.df))]
-RT.df <- es.df[,RT.names]
-noRT.df <- es.df[,noRT.names]
-
-col.dist.RT <- dist(t(RT.df), method = "euclidean")
-col.hclust.RT <- hclust(col.dist.RT, method = "complete")
-col.order.RT <- colnames(RT.df)[order.dendrogram(as.dendrogram(col.hclust.RT))]
-col.dist.noRT <- dist(t(noRT.df), method = "euclidean")
-col.hclust.noRT <- hclust(col.dist.noRT, method = "complete")
-col.order.noRT <- colnames(noRT.df)[order.dendrogram(as.dendrogram(col.hclust.noRT))]
-col.order <- c(col.order.noRT, col.order.RT)
-
-row_dist <- dist(es.df, method = "euclidean")
-row_hclust <- hclust(row_dist, method = "complete")
-row.order <- order.dendrogram(as.dendrogram(row_hclust))
-
-df.ordered <- combined.df %>%
-  arrange(match(pathway, rownames(es.df)[row.order]), match(Perturbations, c(col.order.noRT, col.order.RT)))
+# RT.names <- colnames(es.df)[grepl("_RT", colnames(es.df))]
+# noRT.names <- colnames(es.df)[grepl("_noRT", colnames(es.df))]
+# RT.df <- es.df[,RT.names]
+# noRT.df <- es.df[,noRT.names]
+# 
+# col.dist.RT <- dist(t(RT.df), method = "euclidean")
+# col.hclust.RT <- hclust(col.dist.RT, method = "complete")
+# col.order.RT <- colnames(RT.df)[order.dendrogram(as.dendrogram(col.hclust.RT))]
+# col.dist.noRT <- dist(t(noRT.df), method = "euclidean")
+# col.hclust.noRT <- hclust(col.dist.noRT, method = "complete")
+# col.order.noRT <- colnames(noRT.df)[order.dendrogram(as.dendrogram(col.hclust.noRT))]
+# col.order <- c(col.order.noRT, col.order.RT)
+# 
+# row_dist <- dist(es.df, method = "euclidean")
+# row_hclust <- hclust(row_dist, method = "complete")
+# row.order <- order.dendrogram(as.dendrogram(row_hclust))
+# 
+# df.ordered <- combined.df %>%
+#   arrange(match(pathway, rownames(es.df)[row.order]), match(Perturbations, c(col.order.noRT, col.order.RT)))
 
 # Use this section if you just want to cluster across all rows and cols
 
-# row_dist <- dist(es.df, method = "euclidean")
-# row_hclust <- hclust(row_dist, method = "complete")
-# row_order <- order.dendrogram(as.dendrogram(row_hclust))
-# 
-# col_dist <- dist(t(es.df), method = "euclidean")
-# col_hclust <- hclust(col_dist, method = "complete")
-# col.order <- order.dendrogram(as.dendrogram(col_hclust))
-# 
-# df.ordered <- combined.df %>%
-#   arrange(match(pathway, rownames(es.df)[row_order]), match(Perturbations, colnames(es.df)[col.order]))
+row_dist <- dist(es.df, method = "euclidean")
+row_hclust <- hclust(row_dist, method = "complete")
+row_order <- order.dendrogram(as.dendrogram(row_hclust))
+
+col_dist <- dist(t(es.df), method = "euclidean")
+col_hclust <- hclust(col_dist, method = "complete")
+col.order <- order.dendrogram(as.dendrogram(col_hclust))
+
+df.ordered <- combined.df %>%
+  arrange(match(pathway, rownames(es.df)[row_order]), match(Perturbations, colnames(es.df)[col.order]))
 
 df.ordered$pathway <- factor(df.ordered$pathway, levels = unique(df.ordered$pathway))
 df.ordered$Perturbations <- factor(df.ordered$Perturbations, levels = unique(df.ordered$Perturbations))

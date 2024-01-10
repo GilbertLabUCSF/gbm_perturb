@@ -1,0 +1,79 @@
+# Data Export
+
+A collection of scripts that inspects and prepares GL261 data for export to other data formats.
+
+```{r}
+# Set libpaths
+.libPaths(c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb/renv/library/R-4.3/x86_64-pc-linux-gnu", .libPaths()))
+```
+
+```{r}
+library(Seurat)
+```
+
+Read in the preprocessed Seurat object
+
+```{r}
+PATH.TO.SEURAT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_integrated_20230619.Rds"
+data.main = readRDS(PATH.TO.SEURAT)
+```
+
+Normalize the data and log-transform it, then store it in the RNA slot.
+
+```{r}
+data.main <- NormalizeData(data.main, assay = "RNA")
+```
+
+To make the file sizes more manageable, split the Seurat object into its separate contexts.
+
+```{r}
+data.list <- list()
+for (context in c("CED", "invitro", "preinf")) {
+  data.list[[context]] <- subset(data.main, source == context)
+}
+data.list[["preinf"]] <- subset(data.list[["preinf"]], sorted == "MACSFACS")
+```
+
+Then, let's slim down each one:
+
+```{r}
+data.list.slimmed <- list()
+for (context in names(data.list)) {
+  context.seurat <- data.list[[context]]
+  DefaultAssay(context.seurat) <- "RNA"
+  context.seurat <- DietSeurat(
+    context.seurat,
+    layers = c("counts", "data"),
+    assays = "RNA",
+    dimreducs = NULL,
+    graphs = NULL
+  )
+  factor.indices <- sapply(context.seurat@meta.data, is.factor)
+  context.seurat@meta.data[factor.indices] <- lapply(context.seurat@meta.data[factor.indices], as.character)
+  context.seurat$percent.mt <- NULL
+  context.seurat$nCount_RNA <- NULL
+  context.seurat$nFeature_RNA <- NULL
+  context.seurat$sorted <- NULL
+  context.seurat$SCT_snn_res.0.4 <- NULL
+  context.seurat$seurat_clusters <- NULL
+  context.seurat$scMRMA <- NULL
+  context.seurat$scMRMA_manual <- NULL
+  data.list.slimmed[[context]] <- context.seurat
+}
+data.list <- NULL
+context.seurat <- NULL
+data.main <- NULL
+```
+
+Save each of the slimmed versions to our export directory:
+
+```{r}
+EXPORT.DIRECTORY <- "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/exports/rds"
+for (context in names(data.list.slimmed)) {
+  print(paste("Processing", context))
+  context.seurat <- data.list.slimmed[[context]]
+  saveRDS(context.seurat, file = paste(EXPORT.DIRECTORY,
+                                       sprintf("gl261_%s_preprocessed_counts.rds", context),
+                                       sep = "/"))
+}
+```

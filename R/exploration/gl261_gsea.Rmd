@@ -12,7 +12,7 @@ Import libraries
 ```{r}
 library(Seurat)
 library(clusterProfiler)
-library(org.Mm.eg.db)
+library(org.Hs.eg.db)
 library(knitr)
 library(msigdbr)
 library(fgsea)
@@ -24,18 +24,21 @@ library(ComplexHeatmap)
 library(colorRamp2)
 library(tidyr)
 library(patchwork)
-library(RColorBrewer)
 library(ggtree)
 library(gridExtra)
 library(ape)
+library(RColorBrewer)
+library(reactome.db)
+library(annotables)
+library(biomaRt)
 ```
 
 Define a bunch of constants.
 
 ```{r}
 INPUT_DIRS <- c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_ced_noRTNormalized_all")
-CONTEXT <- "CED"
-CONDITION <- "noRT"
+CONTEXT <- "preinf"
+CONDITION <- "RT"
 OUTPUT_DIR <- sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/gsea/noRTNormalized/%s/%s", CONTEXT, CONDITION)
 ```
 
@@ -53,7 +56,7 @@ for (dir in INPUT_DIRS) {
 }
 ```
 
-Separate out RT and noRT cases.
+Separate out RT and noRT use cases
 
 ```{r}
 noRT.indices <- grepl("_noRT_non-targeting_noRT", names(data.list))
@@ -63,31 +66,57 @@ RT.list <- data.list[RT.indices]
 overall.list <- data.list
 
 if (CONDITION == "RT") {
-  data.list <- RT.list
+  data.list.symbols <- RT.list
 } else {
-  data.list <- noRT.list
+  data.list.symbols <- noRT.list
 }
 ```
 
-Prepare an ordered gene set by LFC that we will use for gene set enrichment analysis. Note that we remove any genes that have an NA LFC and capitalize all genes. We also change from gene symbol to ENSEMBL gene ID and remove unmappable symbols, averaging out the LFCs for multiple symbols that map to the same ENSEMBL gene ID.
+Prepare an ENSEMBL gene ID data list by converting using the `annotables` package. Record the genes that end up going missing from ENSEMBL conversion.
+
+```{r}
+mapping.df <- annotables::grcm38
+missing.genes <- list()
+data.list.ensembl <- list()
+for (name in names(data.list.symbols)) {
+  deseq_table <- data.list.symbols[[name]]
+  mapping.df <- mapping.df[!duplicated(mapping.df$symbol), ]
+  mapping.table <- mapping.df[mapping.df$symbol %in% deseq_table$feature, ]
+  mapping.table <- as.data.frame(mapping.table)
+  rownames(mapping.table) <- mapping.table$symbol
+  deseq_table$ensembl <- mapping.table[deseq_table$feature, "ensgene"]
+  deseq_table.missing <- deseq_table[is.na(deseq_table$ensembl), ]
+  missing.genes[[name]] <- deseq_table.missing$feature
+  data.list.ensembl[[name]] <- deseq_table[!is.na(deseq_table$ensembl), ]
+}
+write.table(missing.genes[[1]], file = paste(OUTPUT_DIR, "missing_genes.txt", sep = "/"), row.names = FALSE, quote = FALSE)
+```
+
+Get rid of anything that shows low expression:
+
+```{r}
+processed.deseq.tables <- list()
+for (name in names(data.list.ensembl)) {
+  deseq_table <- data.list.ensembl[[name]]
+  deseq_table <- deseq_table[!is.na(deseq_table$pvalue), ]
+  deseq_table <- deseq_table[!is.na(deseq_table$padj), ]
+  processed.deseq.tables[[name]] <- deseq_table
+}
+data.list <- processed.deseq.tables
+```
+
+Generate an ordered list from the processed DESeq2 tables:
 
 ```{r}
 ranked_gene_set_list <- list()
-for (name in names(data.list)) {
-  cat("Processing", name, "\n")
-  
-  deseq_table <- data.list[[name]]
-  mapping <- mapIds(org.Mm.eg.db, keys = deseq_table$feature,
-                      column = "ENSEMBL", keytype = "SYMBOL")
-  deseq_table$ensembl <- unlist(mapping)
-  deseq_table <- subset(deseq_table, !is.na(deseq_table$ensembl))
-  deseq_table <- deseq_table[!is.na(deseq_table$log_fc), ]
-  
-  # Group by unique ensembl ID and average
+for (name in names(processed.deseq.tables)) {
+  deseq_table <- processed.deseq.tables[[name]]
+  # Group by unique Ensembl ID and average
   deseq_table <- deseq_table %>%
     group_by(ensembl) %>%
     summarize(log_fc = mean(log_fc))
-  deseq_table <- deseq_table[order(-deseq_table$log_fc), ]
+  deseq_table <- deseq_table %>% mutate(rank = rank(log_fc,  ties.method = "random"))
+  deseq_table <- deseq_table[order(-deseq_table$rank),] # Rank deterministically
   
   # Generate a ranked list
   gene_list <- deseq_table$log_fc
@@ -97,15 +126,15 @@ for (name in names(data.list)) {
 }
 ```
 
-Run GSEA using msigdbr and fgsea
+Run GSEA using `msigdbr` and `fgsea`.
 
 ```{r}
-msigdbr_df <- msigdbr(species = "mouse", category = "H")
+msigdbr_df <- msigdbr(species = "Mus musculus", category = "H")
 msigdbr_list = split(x = msigdbr_df$ensembl_gene, f = msigdbr_df$gs_name)
 
+set.seed(1) # required for deterministic performance
 fgsea.output.list <- list()
 for (name in names(ranked_gene_set_list)) {
-  print(name)
   gsea_results <- fgsea(pathways = msigdbr_list, stats = ranked_gene_set_list[[name]],
                         maxSize = 500, eps = 0.0) # allow arbitrarily low p-values
   fgsea.output.list[[name]] <- gsea_results
@@ -113,7 +142,7 @@ for (name in names(ranked_gene_set_list)) {
 saveRDS(fgsea.output.list, paste(OUTPUT_DIR, "fgsea_ensembl_ontology_list.rds", sep = "/"))
 ```
 
-Let's generate a heatmap that includes all of the outputs across all of the Hallmark gene sets. To do so, we want to convert all of our outputs into a single dataframe.
+Plot the enrichment results on a heatmap
 
 ```{r}
 extracted_cols <- lapply(names(fgsea.output.list), function(name) {
@@ -140,15 +169,15 @@ draw(ht, heatmap_legend_side = "top", annotation_legend_side = "top")
 dev.off()
 ```
 
-Make a cool bubble plot where the size of the dot corresponds to p-value, the color of the dot corresponds to net enrichment score, and dots that are significant get highlighted with the adjusted p-value. Hierarchically cluster according to effect size. First, prepare the data:
+### Bubble Plot
 
 ```{r}
 combined.df <- bind_rows(fgsea.output.list, .id = "Perturbations")
 combined.df$pathway <- gsub("HALLMARK_", "", combined.df$pathway)
 combined.df$pathway <- gsub(" ", "", combined.df$pathway)
-combined.df$log10pvalue <- -log10(combined.df$pval)
-# combined.df$log10padj <- -log10(combined.df$padj)
+combined.df$log10pvalue <- -log10(combined.df$padj)
 combined.df$Perturbations <- gsub("_non-targeting_noRT", "", combined.df$Perturbations)
+unfiltered.df <- combined.df
 
 # combined.df <- combined.df %>%
 #   group_by(pathway) %>%
@@ -161,7 +190,7 @@ combined.df <- combined.df %>%
   ungroup()
 
 es.df <- combined.df %>%
-  select(-pval, -padj, -log2err, -NES, -size, -leadingEdge, -log10pvalue)
+  dplyr::select(-pval, -padj, -log2err, -NES, -size, -leadingEdge, -log10pvalue)
 
 es.df <- es.df %>%
   group_by(pathway, Perturbations) %>%
@@ -170,7 +199,7 @@ es.df <- es.df %>%
 
 es.df <- as.data.frame(es.df)
 rownames(es.df) <- es.df$pathway
-es.df <- es.df %>% select(-pathway)
+es.df <- es.df %>% dplyr::select(-pathway)
 
 row_dist <- dist(es.df, method = "euclidean")
 row_hclust <- hclust(row_dist, method = "complete")
@@ -183,26 +212,26 @@ col_order <- order.dendrogram(as.dendrogram(col_hclust))
 df.ordered <- combined.df %>%
   arrange(match(pathway, rownames(es.df)[row_order]), match(Perturbations, colnames(es.df)[col_order]))
 
-df.ordered$pathway <- factor(df.ordered$pathway, levels = unique(df.ordered$pathway))
-df.ordered$Perturbations <- factor(df.ordered$Perturbations, levels = unique(df.ordered$Perturbations))
+df.ordered$pathway <- factor(df.ordered$pathway, levels = rownames(es.df)[row_order])
+df.ordered$Perturbations <- factor(df.ordered$Perturbations, levels = colnames(es.df)[col_order])
 
 # Add in RT fill bar
 
-# df.ordered$RT <- ifelse(grepl("_RT", df.ordered$Perturbations), "RT", "noRT")
-# unique_perturbations <- unique(df.ordered$Perturbations)
-# 
-# rect.df <- data.frame(
-#   xmin = unique_perturbations,
-#   xmax = unique_perturbations,
-#   ymin = rep(max(as.numeric(df.ordered$pathway)) + 1, length(unique_perturbations)),
-#   ymax = rep(max(as.numeric(df.ordered$pathway)) + 2, length(unique_perturbations)),
-#   RT = ifelse(df.ordered$RT[match(unique_perturbations, df.ordered$Perturbations)] == "RT", "RT", "noRT")
-# )
-# rect.df$numeric_xmin <- as.numeric(as.factor(rect.df$xmin)) - 0.5
-# rect.df$numeric_xmax <- as.numeric(as.factor(rect.df$xmax)) + 0.5
-# 
-# unique.perturbations <- unique(gsub("_noRT", "", unique_perturbations))
-# unique.perturbations <- unique(gsub("_RT", "", unique.perturbations))
+df.ordered$RT <- ifelse(grepl("_RT", df.ordered$Perturbations), "RT", "noRT")
+unique_perturbations <- unique(df.ordered$Perturbations)
+
+rect.df <- data.frame(
+  xmin = unique_perturbations,
+  xmax = unique_perturbations,
+  ymin = rep(max(as.numeric(df.ordered$pathway)) + 1, length(unique_perturbations)),
+  ymax = rep(max(as.numeric(df.ordered$pathway)) + 2, length(unique_perturbations)),
+  RT = ifelse(df.ordered$RT[match(unique_perturbations, df.ordered$Perturbations)] == "RT", "RT", "noRT")
+)
+rect.df$numeric_xmin <- as.numeric(as.factor(rect.df$xmin)) - 0.5
+rect.df$numeric_xmax <- as.numeric(as.factor(rect.df$xmax)) + 0.5
+
+unique.perturbations <- unique(gsub("_noRT", "", unique_perturbations))
+unique.perturbations <- unique(gsub("_RT", "", unique.perturbations))
 
 # Add in GO fill bar
 
@@ -225,9 +254,23 @@ rect.df <- data.frame(
 rect.df$numeric_xmin <- as.numeric(as.factor(rect.df$xmin)) - 0.5
 rect.df$numeric_xmax <- as.numeric(as.factor(rect.df$xmax)) + 0.5
 
-unique.go.terms <- unique(rect.df$GO)
-dark2.palette <- brewer.pal(length(unique.go.terms), "Paired")
-term.color.map <- setNames(dark2.palette, unique.go.terms)
+# Hard coded color mapping for consistency
+
+term.color.map <- list(
+  `Mitosis` = "#A6CEE3",
+  `Translation` = "#1F78B4",
+  `DNA damage response` = "#B2DF8A",
+  `Metabolism` = "#33A02C",
+  `LIM Domain` = "#FB9A99",
+  `Mitochondria` = "#E31A1C",
+  `Proteasome` = "#FDBF6F",
+  `Signaling` = "#FF7F00",
+  `Cyclin-dependent kinase inhibitor` = "#CAB2D6",
+  `DNA Replication` = "#6A3D9A",
+  `Telomere` = "#FFFF99",
+  `Transcription` = "#B15928",
+  `Non-targeting` = "gray"
+)
 
 # Add in screening phenotype annotations
 
@@ -258,15 +301,17 @@ rownames(annotation.table) <- paste(CONTEXT, rownames(annotation.table), sep = "
 annotation.table <- subset(annotation.table, 
                            rownames(annotation.table) %in% unique(df.ordered$Perturbations))
 annotation.table$Perturbations <- rownames(annotation.table)
+annotation.table$Perturbations <- factor(annotation.table$Perturbations, 
+                                         levels = levels(df.ordered$Perturbations))
 annotation.table <- annotation.table %>%
-  arrange(match(Perturbations, colnames(es.df)[col_order]))
-annotation.table$Perturbations <- factor(annotation.table$Perturbations, levels = unique(annotation.table$Perturbations))
+  arrange(Perturbations)
 
 # Add significance layer
 df.ordered$Significance <- ifelse(df.ordered$padj < 0.05, "adjp < 0.05", "NA")
 
 # Clean up names
 df.ordered$Pathways <- df.ordered$pathway
+df.ordered$Pathways <- gsub("_", " ", df.ordered$Pathways)
 ```
 
 Then make the plot:
@@ -276,11 +321,14 @@ bubble.plot <- ggplot(df.ordered,
                aes(x = Perturbations)) +
   
   # Add the bubble and outline significance layers
-  geom_point(aes(y = Pathways, size = log10pvalue, color = ES), alpha = 0.5) +
+  geom_point(aes(y = Pathways, size = log10pvalue, color = ES), alpha = 1.0) +
   geom_point(data = subset(df.ordered, padj < 0.05),
             aes(y = Pathways, size = log10pvalue, shape = 'adjp < 0.05'),
-            color = "black", fill = NA, alpha = 0.6) +
-  scale_size(range = c(2, 5)) +
+            color = "black", fill = NA, alpha = 0.8) +
+  geom_point(data = subset(df.ordered, is.na(pval) | is.na(padj) | is.na(log10pvalue)), 
+            aes(y = Pathways), 
+            color = "black", size = 1, alpha = 0.6) +
+  scale_size(range = c(2, 7)) +
   scale_color_gradient2(
     low = "blue",
     mid = "white",
@@ -335,9 +383,98 @@ combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annota
   title = "Enrichment of Hallmark pathways across perturbations",
   subtitle = paste(CONTEXT, CONDITION, "noRTNormalized")
 )
-ggsave(paste(OUTPUT_DIR, "enrichment_bubble_plot_fgsea.png", sep = "/"),
-       combined.plot, height = 13, width = 14)
+ggsave(paste(OUTPUT_DIR, "enrichment_bubble_plot_fgsea_3.pdf", sep = "/"),
+       combined.plot, height = 13, width = 13, device = pdf)
 ```
+
+Keeping track of what dimensions we want for each combination:
+
+```{r}
+# CED noRT, size 2-6
+# vertical.plot <- gamma.plot / tau.plot / rho.plot / perturb.dendrogram / bubble.plot + plot_layout(heights = c(0.5, 0.5, 0.5, 0.5, 3))
+# dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heights = c(0.85, 1))
+# combined.plot <- dendrogram.vertical.plot | vertical.plot
+# combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annotation(
+#   title = "Enrichment of Hallmark pathways across perturbations",
+#   subtitle = paste(CONTEXT, CONDITION, "noRTNormalized")
+# )
+# ggsave(paste(OUTPUT_DIR, "enrichment_bubble_plot_fgsea.pdf", sep = "/"),
+#        combined.plot, height = 13, width = 14, device = pdf)
+
+# CED RT, size 2-7
+# vertical.plot <- gamma.plot / tau.plot / rho.plot / perturb.dendrogram / bubble.plot + plot_layout(heights = c(0.5, 0.5, 0.5, 0.5, 3))
+# dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heights = c(0.85, 1))
+# combined.plot <- dendrogram.vertical.plot | vertical.plot
+# combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annotation(
+#   title = "Enrichment of Hallmark pathways across perturbations",
+#   subtitle = paste(CONTEXT, CONDITION, "noRTNormalized")
+# )
+# ggsave(paste(OUTPUT_DIR, "enrichment_bubble_plot_fgsea.pdf", sep = "/"),
+#        combined.plot, height = 13, width = 12, device = pdf)
+
+# preinf RT, size 2-7
+# vertical.plot <- gamma.plot / tau.plot / rho.plot / perturb.dendrogram / bubble.plot + plot_layout(heights = c(0.5, 0.5, 0.5, 0.5, 3))
+# dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heights = c(0.85, 1))
+# combined.plot <- dendrogram.vertical.plot | vertical.plot
+# combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annotation(
+#   title = "Enrichment of Hallmark pathways across perturbations",
+#   subtitle = paste(CONTEXT, CONDITION, "noRTNormalized")
+# )
+# ggsave(paste(OUTPUT_DIR, "enrichment_bubble_plot_fgsea.pdf", sep = "/"),
+#        combined.plot, height = 13, width = 13, device = pdf)
+# preinf noRT same as above
+
+# invitro noRT
+# vertical.plot <- gamma.plot / tau.plot / rho.plot / perturb.dendrogram / bubble.plot + plot_layout(heights = c(0.5, 0.5, 0.5, 0.5, 3))
+# dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heights = c(0.85, 1))
+# combined.plot <- dendrogram.vertical.plot | vertical.plot
+# combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annotation(
+#   title = "Enrichment of Hallmark pathways across perturbations",
+#   subtitle = paste(CONTEXT, CONDITION, "noRTNormalized")
+# )
+# ggsave(paste(OUTPUT_DIR, "enrichment_bubble_plot_fgsea.pdf", sep = "/"),
+#        combined.plot, height = 13, width = 14, device = pdf)
+
+# invitro RT
+# vertical.plot <- gamma.plot / tau.plot / rho.plot / perturb.dendrogram / bubble.plot + plot_layout(heights = c(0.5, 0.5, 0.5, 0.5, 3))
+# dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heights = c(0.85, 1))
+# combined.plot <- dendrogram.vertical.plot | vertical.plot
+# combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annotation(
+#   title = "Enrichment of Hallmark pathways across perturbations",
+#   subtitle = paste(CONTEXT, CONDITION, "noRTNormalized")
+# )
+# ggsave(paste(OUTPUT_DIR, "enrichment_bubble_plot_fgsea.pdf", sep = "/"),
+#        combined.plot, height = 13, width = 14, device = pdf)
+```
+
+### Basic Analysis Questions:
+
+```{r}
+analysis.df <- merge(unfiltered.df, annotation.table, on = "Perturbations")
+analysis.df$leadingEdge <- sapply(analysis.df$leadingEdge, function(x) paste(x, collapse = ","))
+write.table(analysis.df, file = paste(OUTPUT_DIR, "analysis_df.txt", sep = "/"), row.names = FALSE, quote = FALSE)
+
+# For each perturbation, how many significant hallmark gene sets are there?
+perturb.grouped <- analysis.df %>%
+  group_by(Perturbations) %>%
+  summarize(n_hallmark_significant = sum(padj < 0.05, na.rm = TRUE)) %>%
+  complete(Perturbations, fill = list(n_hallmark_significant = 0))
+write.table(perturb.grouped, file = paste(OUTPUT_DIR, "sig_counts_perturb_grouped.txt", sep = "/"), row.names = FALSE, quote = FALSE)
+
+# For each Hallmark gene set, how many significant perturbations are there?
+hallmark.grouped <- analysis.df %>%
+  group_by(pathway) %>%
+  summarize(n_perturb_significant = sum(padj < 0.05, na.rm = TRUE)) %>%
+  complete(pathway, fill = list(n_perturb_significant = 0))
+write.table(hallmark.grouped, file = paste(OUTPUT_DIR, "sig_counts_hallmark_grouped.txt", sep = "/"), row.names = FALSE, quote = FALSE)
+```
+
+### Export the Analysis Matrix per Pathway too:
+
+```{r}
+```
+
+### Creating a Correlation Matrix
 
 ```{r}
 nt.df <- read.table("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_ced_noRTNormalized_all/CED_non-targeting_RT_non-targeting_noRT.csv")
@@ -365,4 +502,33 @@ perturb.dendrogram
 
 ```{r}
 perturb.dendrogram + coord_flip() + scale_x_reverse()
+```
+
+```{r}
+write.table(sgAnnot, paste(OUTPUT_DIR, "screen_phenotypes.txt", sep = "/"), sep = "\t")
+```
+
+```{r}
+# Inspecting some GSEA results that didn't look quite right
+
+ced.nt.table <- read.table("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_ced_noRTNormalized_all/CED_non-targeting_RT_non-targeting_noRT.csv")
+ced.nt.table <- ced.nt.table[c("feature", "log_fc", "padj", "pvalue")]
+ced.nt.table <- ced.nt.table[!is.na(ced.nt.table$pvalue), ]
+ced.nt.table <- ced.nt.table[!is.na(ced.nt.table$padj), ]
+colnames(ced.nt.table) <- c("feature", "ced_log_fc", "ced_padj", "ced_pvalue")
+
+preinf.nt.table <- read.table("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_preinf_noRTNormalized_sorted/preinf_non-targeting_RT_non-targeting_noRT.csv")
+preinf.nt.table <- preinf.nt.table[c("feature", "log_fc", "padj", "pvalue")]
+preinf.nt.table <- preinf.nt.table[!is.na(preinf.nt.table$pvalue), ]
+preinf.nt.table <- preinf.nt.table[!is.na(preinf.nt.table$padj), ]
+colnames(preinf.nt.table) <- c("feature", "preinf_log_fc", "preinf_padj", "preinf_pvalue")
+
+invitro.nt.table <- read.table("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20230705_invitro_noRTNormalized_all/invitro_non-targeting_RT_non-targeting_noRT.csv")
+invitro.nt.table <- invitro.nt.table[c("feature", "log_fc", "padj", "pvalue")]
+invitro.nt.table <- invitro.nt.table[!is.na(invitro.nt.table$pvalue), ]
+invitro.nt.table <- invitro.nt.table[!is.na(invitro.nt.table$padj), ]
+colnames(invitro.nt.table) <- c("feature", "invitro_log_fc", "invitro_padj", "invitro_pvalue")
+
+all.df <- merge(ced.nt.table, preinf.nt.table, by = "feature")
+all.df <- merge(all.df, invitro.nt.table, by = "feature")
 ```

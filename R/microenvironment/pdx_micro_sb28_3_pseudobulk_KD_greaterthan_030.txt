@@ -1,0 +1,48 @@
+Apoe_-_19698125.23-P1P2,Astrocytes
+Apoe_-_19698125.23-P1P2,Oligodendrocyte progenitor cells
+Apoe_-_19698146.23-P1P2,Astrocytes
+Apoe_-_19698146.23-P1P2,Oligodendrocyte progenitor cells
+Apoe_-_19698146.23-P1P2,Oligodendrocytes
+Apoe_+_19699036.23-P1P2,Astrocytes
+Apoe_+_19699036.23-P1P2,Oligodendrocyte progenitor cells
+Apoe_+_19699036.23-P1P2,Oligodendrocytes
+C1qa_+_136898405.23-P1P2,Astrocytes
+C1qa_+_136898405.23-P1P2,Oligodendrocyte progenitor cells
+C1qa_+_136898726.23-P1P2,Astrocytes
+C1qa_+_136898748.23-P1P2,Macrophages
+C1qa_+_136898748.23-P1P2,Microglia
+Cd44_-_102901399.23-P1P2,Astrocytes
+Cd44_-_102901399.23-P1P2,Oligodendrocyte progenitor cells
+Cd44_-_102901399.23-P1P2,Oligodendrocytes
+Cd44_-_102901415.23-P1P2,Astrocytes
+Cd44_-_102901415.23-P1P2,Microglia
+Cd44_-_102901415.23-P1P2,Oligodendrocyte progenitor cells
+Cd44_-_102901435.23-P1P2,Astrocytes
+Cd44_-_102901435.23-P1P2,Oligodendrocyte progenitor cells
+Cd44_-_102901435.23-P1P2,Oligodendrocytes
+Cd74_-_60803912.23-P1P2,Astrocytes
+Cd74_-_60803912.23-P1P2,Oligodendrocyte progenitor cells
+Cd74_-_60803912.23-P1P2,Oligodendrocytes
+Cd74_-_60803924.23-P1P2,Oligodendrocytes
+Cd74_+_60803931.23-P1P2,Astrocytes
+Cd74_+_60803931.23-P1P2,Oligodendrocytes
+Lyz2_-_117281805.23-P1P2,Oligodendrocyte progenitor cells
+Lyz2_+_117281829.23-P1P2,Astrocytes
+Lyz2_+_117281829.23-P1P2,Oligodendrocyte progenitor cells
+Lyz2_+_117282056.23-P1P2,Macrophages
+Lyz2_+_117282056.23-P1P2,Microglia
+Lyz2_+_117282056.23-P1P2,Oligodendrocyte progenitor cells
+Prkdc_-_15637920.23-P1P2|Prkdc_-_15637894.23-P1P2,Astrocytes
+Prkdc_-_15637920.23-P1P2|Prkdc_-_15637894.23-P1P2,Macrophages
+Prkdc_-_15637920.23-P1P2|Prkdc_-_15637894.23-P1P2,Microglia
+Prkdc_-_15637920.23-P1P2|Prkdc_-_15637894.23-P1P2,Oligodendrocyte progenitor cells
+Prkdc_-_15637920.23-P1P2|Prkdc_-_15637894.23-P1P2,Oligodendrocytes
+Ptprc_-_138175231.23-P1P2,Microglia
+Ptprc_-_138175231.23-P1P2,Oligodendrocytes
+Ptprc_+_138175255.23-P1P2,Astrocytes
+Ptprc_+_138175255.23-P1P2,Macrophages
+Ptprc_+_138175255.23-P1P2,Microglia
+Ptprc_+_138175255.23-P1P2,Oligodendrocyte progenitor cells
+Ptprc_+_138175267.23-P1P2,Astrocytes
+Ptprc_+_138175267.23-P1P2,Macrophages
+Ptprc_+_138175267.23-P1P2,Microglia
