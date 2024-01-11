@@ -1,6 +1,6 @@
 # GL261 Analysis: Counting DE genes
 
-This vignette contains code for counting the number of differentially expressed genes for GL261 DESeq output stored in a directory called `data/malignant/deseq/invitro`.
+This script contains code for counting the number of differentially expressed genes for GL261 DESeq output stored in a directory called `data/malignant/deseq/invitro`.
 
 Import libraries:
 
@@ -112,4 +112,8 @@ degenes.plot <- ggplot(all.df, aes(x = perturb)) +
         legend.key = element_blank())
 ggsave(paste(OUTPUT_DIR, "de_genes_bubble_plot.pdf", sep = "/"),
        degenes.plot, height = 3.5, width = 10, device = pdf)
+```
+
+```{r}
+knitr::purl("/raleighlab/data1/czou/gbm_perturb/gbm_perturb/R/malignant/gsea.Rmd", output = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb/R/malignant/gsea.R")
 ```
