@@ -1,13 +1,8 @@
-# Analysis - Microenvironment, post DESeq
+# Microenvironment Gene Set Enrichment Analysis (GSEA)
 
-Set libpaths
+This vignette contains code for generating and plotting GSEA results from microenvironment DESeq output. Note that we run GSEA separately for each cell type, but provide code where individual cell types (`OPCs`) are plotted one by one and where all cell types in a directory called `data/microenvironment/deseq/sgNegCtrl3` are plotted together. For each GSEA result, we provide a heatmap of enrichment scores and a bubble plot connecting the enrichment scores with significance.
 
-```{r}
-# Set libpaths
-.libPaths(c("/raleighlab/data1/czou/gbm_perturb/gbm_perturb/renv/library/R-4.3/x86_64-pc-linux-gnu", .libPaths()))
-```
-
-Import libraries
+Import libraries:
 
 ```{r}
 library(Seurat)
@@ -33,88 +28,18 @@ library(annotables)
 library(biomaRt)
 ```
 
-## Validation of non-targeting guides
+## GSEA (Individual Cell Type Plotting)
 
-Define constants
-
-```{r}
-CELL.TYPE <- commandArgs(trailingOnly=TRUE)[1]
-GENE.AGGREGATION <- "sgRNA_gene_sgNegCtrl3"
-INPUT.DIR <- sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_outputs/deseq/SB28_integrated_20231207_ME/%s/%s", GENE.AGGREGATION, CELL.TYPE)
-OUTPUT.DIR <- sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_outputs/gsea/%s/%s", GENE.AGGREGATION, CELL.TYPE)
-```
-
-Import the DESeq output
-
-```{r}
-data.list.symbols <- list()
-for (dir in INPUT.DIR) {
-  file_names <- list.files(dir)
-  for (i in file_names) {
-    name <- gsub(".csv", "", i)
-    df <- read.table(paste(dir, "/", i, sep = ""))
-    data.list.symbols[[name]] <- df
-  }
-}
-```
-
-Take a look at what these outputs look like after going through and filtering for validity
-
-```{r}
-processed.deseq.tables <- list()
-for (name in names(data.list.symbols)) {
-  deseq_table <- data.list.symbols[[name]]
-  deseq_table <- deseq_table[!is.na(deseq_table$pvalue), ]
-  deseq_table <- deseq_table[!is.na(deseq_table$padj), ]
-  processed.deseq.tables[[name]] <- deseq_table
-}
-data.list <- processed.deseq.tables
-```
-
-For each combination, get the number of DE genes.
-
-```{r}
-df <- data.frame(matrix(nrow = length(data.list), ncol = 4, dimnames = list(names(data.list), c("Comparison", "n_upregulated_genes", "n_downregulated_genes", "n_total"))))
-for (name in names(data.list)) {
-  deseq_table <- data.list[[name]]
-  upregulated.table <- deseq_table[deseq_table$log_fc > 0.5, ]
-  downregulated.table <- deseq_table[deseq_table$log_fc < -0.5, ]
-  df[name, "n_upregulated_genes"] <- dim(upregulated.table)[1]
-  df[name, "n_downregulated_genes"] <- dim(downregulated.table)[1]
-  df[name, "n_total"] <- dim(deseq_table)[1]
-  df[name, "Comparison"] <- name
-}
-```
-
-Plot
-
-```{r}
-# Reshape the data from wide to long format
-df_long <- pivot_longer(df, cols = c(n_upregulated_genes, n_downregulated_genes, n_total),
-                        names_to = "Category", values_to = "Count")
-
-# Create the bar plot
-plot <- ggplot(df_long, aes(x = Comparison, y = Count, fill = Category)) +
-  geom_bar(stat = "identity", position = position_dodge()) +
-  scale_fill_brewer(palette = "Set1") +  # You can choose a palette that suits your data
-  theme_minimal() +
-  labs(x = "Comparison", y = "Count", fill = "Category") +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
-ggsave(paste(OUTPUT.DIR, "comparison_of_non-targeting_degenes.png", sep = "/"), plot, height = 12, width = 15)
-```
-
-## Individual cell type GSEA
-
-Define constants
+Define constants:
 
 ```{r}
 CELL.TYPE <- "OPCs"
-GENE.AGGREGATION <- "sgRNA_gene_sgNegCtrl3_knockouts"
-INPUT.DIR <- sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_outputs/deseq/SB28_integrated_20231207_ME/%s/%s", GENE.AGGREGATION, CELL.TYPE)
-OUTPUT.DIR <- sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_outputs/gsea/%s/%s_pval", GENE.AGGREGATION, CELL.TYPE)
+CONTROL <- "sgNegCtrl3"
+INPUT.DIR <- sprintf("data/microenvironment/deseq/sgNegCtrl3/%s", CELL.TYPE)
+OUTPUT.DIR <- sprintf("data/microenvironment/gsea/sgNegCtrl3/%s", CELL.TYPE)
 ```
 
-Import the DESeq output
+Import the DESeq output:
 
 ```{r}
 data.list.symbols <- list()
@@ -128,7 +53,7 @@ for (dir in INPUT.DIR) {
 }
 ```
 
-Prepare an EMSEMBL gene ID list
+Prepare an EMSEMBL gene ID list:
 
 ```{r}
 mapping.df <- annotables::grcm38
@@ -183,7 +108,7 @@ for (name in names(processed.deseq.tables)) {
 }
 ```
 
-Run GSEA using `msigdbr` and `fgsea`.
+Run GSEA using `msigdbr` and `fgsea`:
 
 ```{r}
 msigdbr_df <- msigdbr(species = "Mus musculus", category = "H")
@@ -251,6 +176,8 @@ dev.off()
 
 ### Bubble plot, clustered
 
+Prepare the data:
+
 ```{r}
 combined.df <- bind_rows(fgsea.output.list, .id = "Perturbations")
 combined.df$pathway <- gsub("HALLMARK_", "", combined.df$pathway)
@@ -258,11 +185,6 @@ combined.df$pathway <- gsub(" ", "", combined.df$pathway)
 combined.df$log10pvalue <- -log10(combined.df$padj)
 combined.df$Perturbations <- gsub("_non-targeting_noRT", "", combined.df$Perturbations)
 unfiltered.df <- combined.df
-
-# combined.df <- combined.df %>%
-#   group_by(pathway) %>%
-#   filter(any(padj < 0.05)) %>%
-#   ungroup()
 
 combined.df <- combined.df %>%
   group_by(pathway) %>%
@@ -303,7 +225,7 @@ df.ordered$Pathways <- df.ordered$pathway
 df.ordered$Pathways <- gsub("_", " ", df.ordered$Pathways)
 ```
 
-Make the plot
+Make the plot:
 
 ```{r}
 bubble.plot <- ggplot(df.ordered,
@@ -360,55 +282,23 @@ dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heig
 combined.plot <- dendrogram.vertical.plot | vertical.plot
 combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annotation(
   title = "Enrichment of Hallmark pathways across perturbations",
-  subtitle = paste(CELL.TYPE, GENE.AGGREGATION)
+  subtitle = paste(CELL.TYPE, CONTROL)
 )
 ggsave(paste(OUTPUT.DIR, "enrichment_bubble_plot_fgsea_clustered.pdf", sep = "/"),
        combined.plot, height = 6, width = 6, device = pdf)
 ```
 
-Save the aesthetic settings we're using across cells and across the gene aggregate/not
+### Bubble plot, alphabetical
 
-```{r}
-# Aesthetics settings for sgRNA_gene
-# perturb.dendrogram <- ggtree(as.phylo(col_hclust)) + theme_tree() + coord_flip() + scale_x_reverse()
-# module.dendrogram <- ggtree(as.phylo(row_hclust)) + theme_tree()
-# 
-# vertical.plot <- perturb.dendrogram / bubble.plot + plot_layout(heights = c(0.5, 3))
-# dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heights = c(0.17, 1))
-# combined.plot <- dendrogram.vertical.plot | vertical.plot
-# combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annotation(
-#   title = "Enrichment of Hallmark pathways across perturbations",
-#   subtitle = paste(CONTEXT, CONDITION, "noRTNormalized")
-# )
-# ggsave(paste(OUTPUT.DIR, "enrichment_bubble_plot_fgsea_2.pdf", sep = "/"),
-#        combined.plot, height = 6, width = 6, device = pdf)
-
-# vertical.plot <- perturb.dendrogram / bubble.plot + plot_layout(heights = c(0.5, 3))
-# dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heights = c(0.17, 1))
-# combined.plot <- dendrogram.vertical.plot | vertical.plot
-# combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annotation(
-#   title = "Enrichment of Hallmark pathways across perturbations",
-#   subtitle = paste(CELL.TYPE, GENE.AGGREGATION)
-# )
-# ggsave(paste(OUTPUT.DIR, "enrichment_bubble_plot_fgsea_2.pdf", sep = "/"),
-#        combined.plot, height = 13, width = 13, device = pdf)
-```
-
-### Bubble plot, alphabetical - mostly for sgRNA_full
+Prepare the data:
 
 ```{r}
 combined.df <- bind_rows(fgsea.output.list, .id = "Perturbations")
 combined.df$pathway <- gsub("HALLMARK_", "", combined.df$pathway)
 combined.df$pathway <- gsub(" ", "", combined.df$pathway)
-combined.df$log10pvalue <- -log10(combined.df$pval)
-# combined.df$log10padj <- -log10(combined.df$padj)
+combined.df$log10pvalue <- -log10(combined.df$padj)
 combined.df$Perturbations <- gsub("_non-targeting_noRT", "", combined.df$Perturbations)
 unfiltered.df <- combined.df
-
-# combined.df <- combined.df %>%
-#   group_by(pathway) %>%
-#   filter(any(padj < 0.05)) %>%
-#   ungroup()
 
 combined.df <- combined.df %>%
   group_by(pathway) %>%
@@ -492,20 +382,20 @@ annotation.plot.theme <- theme(
 
 combined.plot <- bubble.plot + plot_annotation(
   title = "Enrichment of Hallmark pathways across perturbations",
-  subtitle = paste(CELL.TYPE, GENE.AGGREGATION)
+  subtitle = paste(CELL.TYPE, CONTROL)
 )
 ggsave(paste(OUTPUT.DIR, "enrichment_bubble_plot_fgsea_non-sorted.pdf", sep = "/"),
        combined.plot, height = 13, width = 13, device = pdf)
 ```
 
-## Grouped cell type GSEA
+## GSEA (Grouped Cell Type Plotting)
 
-Import all of the different cell types at the same time
+Import all of the different cell types at the same time:
 
 ```{r}
-INPUT.DIR.BASE <- "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_outputs/deseq/SB28_integrated_20231207_ME/sgRNA_gene_sgNegCtrl3_knockouts"
+INPUT.DIR.BASE <- "data/microenvironment/deseq"
 INPUT.DIRS <- list.dirs(INPUT.DIR.BASE)[-1]
-OUTPUT.DIR <- "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_outputs/gsea/sgRNA_gene_sgNegCtrl3_knockouts/Combined"
+OUTPUT.DIR <- "data/microenvironment/gsea/combined"
 ```
 
 ```{r}
@@ -641,20 +531,12 @@ dev.off()
 ### Bubble plot, clustered across cell types
 
 ```{r}
-# Eliminate Prkdc if needed
-fgsea.output.list <- fgsea.output.list[-grep("Prkdc", names(fgsea.output.list))]
-
 combined.df <- bind_rows(fgsea.output.list, .id = "Perturbations")
 combined.df$pathway <- gsub("HALLMARK_", "", combined.df$pathway)
 combined.df$pathway <- gsub(" ", "", combined.df$pathway)
 combined.df$log10pvalue <- -log10(combined.df$padj)
 combined.df$Perturbations <- gsub("_sgNegCtrl", "", combined.df$Perturbations)
 unfiltered.df <- combined.df
-
-# combined.df <- combined.df %>%
-#   group_by(pathway) %>%
-#   filter(any(padj < 0.05)) %>%
-#   ungroup()
 
 combined.df <- combined.df %>%
   group_by(pathway) %>%
@@ -689,7 +571,6 @@ df.ordered$Perturbations <- factor(df.ordered$Perturbations, levels = colnames(e
 unique_perturbations <- unique(df.ordered$Perturbations)
 
 # Add in cell type fill bar
-
 df.ordered$cell.type <- sapply(strsplit(as.character(df.ordered$Perturbations), "_"), `[`, 1)
 
 rect.df <- data.frame(
@@ -703,7 +584,6 @@ rect.df$numeric_xmin <- as.numeric(as.factor(rect.df$xmin)) - 0.5
 rect.df$numeric_xmax <- as.numeric(as.factor(rect.df$xmax)) + 0.5
 
 # Add in perturb fill bar
-
 df.ordered$perturb <- sapply(strsplit(as.character(df.ordered$Perturbations), "_"), `[`, 2)
 
 perturb.df <- data.frame(
@@ -793,30 +673,20 @@ vertical.plot <- perturb.dendrogram / bubble.plot + plot_layout(heights = c(0.5,
 dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heights = c(0.22, 1))
 combined.plot <- dendrogram.vertical.plot | vertical.plot
 combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annotation(
-  title = "Enrichment of Hallmark pathways clustered across cell types",
-  subtitle = "Prkdc excluded"
-)
-ggsave(paste(OUTPUT.DIR, "enrichment_bubble_plot_fgsea_clustered_prkdc_excluded_2.pdf", sep = "/"),
+  title = "Enrichment of Hallmark pathways clustered across cell types")
+ggsave(paste(OUTPUT.DIR, "enrichment_bubble_plot_fgsea_clustered.pdf", sep = "/"),
        combined.plot, height = 9, width = 10, device = pdf)
 ```
 
 ### Bubble plot, but clustered within cell types
 
 ```{r}
-# Eliminate Prkdc if required
-fgsea.output.list <- fgsea.output.list[-grep("Prkdc", names(fgsea.output.list))]
-
 combined.df <- bind_rows(fgsea.output.list, .id = "Perturbations")
 combined.df$pathway <- gsub("HALLMARK_", "", combined.df$pathway)
 combined.df$pathway <- gsub(" ", "", combined.df$pathway)
 combined.df$log10pvalue <- -log10(combined.df$padj)
 combined.df$Perturbations <- gsub("_sgNegCtrl", "", combined.df$Perturbations)
 unfiltered.df <- combined.df
-
-# combined.df <- combined.df %>%
-#   group_by(pathway) %>%
-#   filter(any(padj < 0.05)) %>%
-#   ungroup()
 
 combined.df <- combined.df %>%
   group_by(pathway) %>%
@@ -961,189 +831,8 @@ vertical.plot <- bubble.plot
 dendrogram.vertical.plot <- plot_spacer() / module.dendrogram + plot_layout(heights = c(0.01, 1))
 combined.plot <- dendrogram.vertical.plot | vertical.plot
 combined.plot <- combined.plot + plot_layout(widths = c(0.2, 0.8)) + plot_annotation(
-  title = "Enrichment of Hallmark pathways clustered within cell types",
-  subtitle = "Prkdc excluded"
+  title = "Enrichment of Hallmark pathways clustered within cell types"
 )
-ggsave(paste(OUTPUT.DIR, "enrichment_bubble_plot_fgsea_clustered_within_cells_prkdc_excluded_2.pdf", sep = "/"),
+ggsave(paste(OUTPUT.DIR, "enrichment_bubble_plot_fgsea_clustered_within_cells.pdf", sep = "/"),
        combined.plot, height = 10, width = 9, device = pdf)
-```
-
-## Heatmap of top-20 genes by LFC
-
-Import all of the data
-
-```{r}
-INPUT.DIR.BASE <- "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_outputs/deseq/SB28_integrated_20231207_ME/sgRNA_gene_sgNegCtrl3_knockouts"
-INPUT.DIRS <- list.dirs(INPUT.DIR.BASE)[-1]
-OUTPUT.DIR <- "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_outputs/gsea/sgRNA_gene_sgNegCtrl3_knockouts/Combined"
-```
-
-```{r}
-data.list.cell.types <- list()
-for (dir in INPUT.DIRS) {
-  file_names <- list.files(dir)
-  split.string <- strsplit(dir, "/")[[1]]
-  cell.type <- tail(split.string, 1)
-  data.list.symbols <- list()
-  for (i in file_names) {
-    name <- gsub("_sgNegCtrl.csv", "", i)
-    df <- read.table(paste(dir, "/", i, sep = ""))
-    data.list.symbols[[name]] <- df
-  }
-  data.list.cell.types[[cell.type]] <- data.list.symbols
-}
-data.list.cell.types[["SB28"]] <- NULL
-```
-
-For consistency's sake, filter the dataframes by the ENSEMBL and DESeq criteria we identified before with GSEA.
-
-```{r}
-# Prepare the ENSEMBL gene ID list
-mapping.df <- annotables::grcm38
-missing.genes <- list()
-for (cell.type in names(data.list.cell.types)) {
-  data.list.cell.type <- data.list.cell.types[[cell.type]]
-  for (name in names(data.list.cell.type)) {
-    deseq_table <- data.list.cell.type[[name]]
-    mapping.df <- mapping.df[!duplicated(mapping.df$symbol), ]
-    mapping.table <- as.data.frame(mapping.table)
-    rownames(mapping.table) <- mapping.table$symbol
-    deseq_table.missing <- deseq_table[is.na(deseq_table$ensembl), ]
-    missing.genes[[name]] <- deseq_table.missing$feature
-    data.list.cell.type[[name]] <- deseq_table[!is.na(deseq_table$ensembl), ]
-    
-    deseq_table <- deseq_table[!is.na(deseq_table$pvalue), ]
-    deseq_table <- deseq_table[!is.na(deseq_table$padj), ]
-    data.list.cell.type[[name]] <- deseq_table    
-  }
-  data.list.cell.types[[cell.type]] <- data.list.cell.type
-}
-```
-
-For each perturbation, construct a dataframe that consists of the top 20 upregulated genes by LFC with LFC \> 0.5. Then mash the dataframes together and plot them on a heatmap.
-
-```{r}
-# Get the top genes per perturbation
-perturbations <- unique(unlist(data.list.cell.types))
-top_genes_per_perturbation <- list()
-
-for (perturbation in perturbations) {
-  all_top_genes <- vector("list", length(data.list.cell.types))
-
-  for (i in seq_along(data.list.cell.types)) {
-    cell_type_list <- data.list.cell.types[[i]]
-    df <- cell_type_list[[perturbation]]
-    df <- df[df$log_fc > 0.5, ]
-    sorted_genes <- df[order(df$log_fc, decreasing = TRUE), "feature"]
-    top_20_genes <- head(sorted_genes, 20)
-    all_top_genes[[i]] <- top_20_genes
-  }
-  unique_genes <- unique(unlist(all_top_genes))
-  top_genes_per_perturbation[[perturbation]] <- unique_genes
-}
-
-# For each perturbation, construct a new dataframe containing
-# those top genes across cell type x perturbation
-
-dataframes_per_perturbation <- list()
-
-# Create column names: combination of each cell type and each perturbation
-all_cell_types <- names(data.list.cell.types)
-all_combinations <- expand.grid(all_cell_types, perturbations)
-col_names <- apply(all_combinations, 1, paste, collapse = "_")
-
-# Iterate over each perturbation
-for (perturbation in perturbations) {
-  top_genes <- top_genes_per_perturbation[[perturbation]]
-  rows <- length(top_genes)
-
-  # Create an empty dataframe with the appropriate column names
-  df <- data.frame(matrix(nrow = rows, ncol = length(col_names), dimnames = list(top_genes, col_names)))
-  
-  # Populate the dataframe
-  for (cell_type in all_cell_types) {
-    cell_type_list <- data.list.cell.types[[cell_type]]
-    for (perturb in perturbations) {
-      col_name <- paste(cell_type, perturb, sep = "_")
-      for (gene in top_genes) {
-        deseq_df <- cell_type_list[[perturb]]
-        log_fc <- deseq_df[deseq_df$feature == gene, "log_fc"]
-        if (length(log_fc) == 0) {
-          log_fc <- NA
-        }
-        df[gene, col_name] <- log_fc
-      }
-    }
-  }
-  dataframes_per_perturbation[[perturbation]] <- df
-}
-```
-
-Now, merge all of the dataframes together by column name and make a heatmap.
-
-```{r}
-merged_df <- NULL
-for (perturbation in names(dataframes_per_perturbation)) {
-  df <- dataframes_per_perturbation[[perturbation]]
-  rownames(df) <- paste(rownames(df), perturbation, sep = "_")
-  merged_df <- if (is.null(merged_df)) df else rbind(merged_df, df)
-}
-```
-
-```{r}
-split_col_names <- strsplit(colnames(merged_df), "_")
-cell_types <- sapply(split_col_names, `[[`, 1)
-perturbations <- sapply(split_col_names, `[[`, 2)
-
-cell.type.color.scheme <- c(
-  `OPCs` = "#A6CEE3",
-  `Oligodendrocytes` = "#1F78B4",
-  `Microglia` = "#B2DF8A",
-  `Macrophages` = "#33A02C",
-  `Astrocytes` = "#FB9A99"
-)
-
-perturbation.color.scheme <- c(
-  `Prkdc` = "#E31A1C",
-  `Apoe` = "#FDBF6F",
-  `C1qa` = "#FF7F00",
-  `Cd44` = "#CAB2D6",
-  `Cd74` = "#6A3D9A",
-  `Lyz2` = "#FFFF99",
-  `Ptprc` = "#B15928"
-)
-
-# Create a bar on the top for perturbation x cell type
-col_annotation <- HeatmapAnnotation(
-  df = data.frame(Cell_Type = cell_types, Perturbation = perturbations),
-  col = list(Cell_Type = cell.type.color.scheme, 
-             Perturbation = perturbation.color.scheme),
-  which = "col")
-
-# Create a bar on the right side for source perturbation
-source_perturbation <- sapply(strsplit(rownames(merged_df), "_"), tail, 1)
-row_annotation <- HeatmapAnnotation(source = source_perturbation,
-                                    col = list(source = perturbation.color.scheme),
-                                    which = "row")
-
-# Plot the heatmap
-pdf(paste(OUTPUT.DIR, "top20_perturbation_matrix.pdf", sep = "/"),
-    width=20,
-    height=25,
-    useDingbats=FALSE)
-matrix <- as.matrix(merged_df)
-rownames(matrix) <- NULL
-ht <- Heatmap(matrix, 
-        top_annotation = col_annotation, 
-        right_annotation = row_annotation,
-        name = "Top-20 log FC across perturbations and cell types",
-        cluster_column_slices = FALSE,
-        cluster_columns = FALSE,
-        cluster_rows = FALSE,
-        na_col = "gray",
-        width = ncol(merged_df)*unit(4, "mm"),
-        height = nrow(merged_df)*unit(0.5, "mm"),
-)
-draw(ht, heatmap_legend_side = "top", annotation_legend_side = "top")
-dev.off()
 ```

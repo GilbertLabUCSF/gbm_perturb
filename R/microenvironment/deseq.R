@@ -1,31 +1,36 @@
-# Run DESeq2 using DElegate on a Seurat object according to our filters 
-# and configurations.
+# Microenvironment DESeq
 # 
-# Author: Christopher Zou
+# This script takes in an example Seurat object called microenvironment_data.rds 
+# and outputs DESeq data for cells that are labeled with metadata scMRMA_manual
+# %in% DESIRED.CELL.TYPES. Note that this script shows how we used
+# only sgNegCtrl_3 and relabels oligodendrocyte progenitor cells as OPCs.
 # 
-# Output: DElegate output as a CSV file per perturbation. By default, DElegate
-# uses 3 cells per pseudoreplicate.
+# Inputs:
+# - The input Seurat object, which should have scMRMA_manual, sgRNA_full, and
+#   sgRNA_gene
+# - The output directory
+# - Desired cell types
+# 
+# Outputs: 
+# - DElegate output as a CSV file per perturbation.
 
-##############################################################################
-##############################################################################
+## -----------------------------------------------------------------------------------------------------------------------------------------------
 # Dependencies:
 
 library(Seurat)
 library(DElegate)
 library(dplyr)
 
-##############################################################################
-##############################################################################
+## -----------------------------------------------------------------------------------------------------------------------------------------------
 # Inputs:
 
-PATH.TO.SEURAT.OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/SB28_micro_3_sgRNApos_20231203.Rds"
-OUTPUT.DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_sb28_clean_outputs/deseq/SB28_integrated_20231207_ME"
+PATH.TO.SEURAT.OBJECT = "microenvironment_data.rds"
+OUTPUT.DIR = "data/microenvironment/deseq"
 SEED = 5220
 DESIRED.CELL.TYPES = c("Oligodendrocytes", "Astrocytes",
                        "Microglia", "Macrophages", "OPCs")
 
-##############################################################################
-##############################################################################
+## -----------------------------------------------------------------------------------------------------------------------------------------------
 # Code
 
 data = readRDS(PATH.TO.SEURAT.OBJECT)
@@ -124,81 +129,3 @@ for (cell.type in DESIRED.CELL.TYPES) {
     }
   }
 }
-
-# For each of the desired cell types, run DESeq against each of the nt controls.
-# This run uses the sgRNA_full metadata.
-# nt.guides <- c("sgNegCtrl_3", 
-#                "sgNegCtrl_2|sgNegCtrl_2", 
-#                "sgNegCtrl_1|sgNegCtrl_1")
-# for (cell.type in DESIRED.CELL.TYPES) {
-#   data.cell.type <- subset(data, scMRMA_manual == cell.type)
-#   output.dir <- sprintf("%s/%s/%s", OUTPUT.DIR, "sgRNA_full", cell.type)
-#   print(sprintf("Outputting %s sgRNA_gene deseq into %s", cell.type, output.dir))
-#   perturbations <- unique(data.cell.type$sgRNA_full)
-#   perturbations <- perturbations[-which(perturbations %in% nt.guides)]
-#   found = FALSE
-#   for (perturb in perturbations) {
-#     for (nt.guide in nt.guides) {
-#       tryCatch({
-#         df.deseq <- find.deseq.differential.genes(
-#           data.cell.type,
-#           SEED,
-#           perturb,
-#           nt.guide,
-#           group.column = "sgRNA_full"
-#         )
-#         found = TRUE
-#       }, error = function(err) {
-#         print(sprintf("Failed to get model because of %s in %s", err, perturb))
-#       })
-#       if (found) {
-#         write.table(df.deseq, sprintf("%s/%s_%s.csv",
-#                                       output.dir,
-#                                       perturb,
-#                                       nt.guide))
-#       }
-#     }
-#   }
-# }
-# 
-# # For each of the non-targeting guides, run DESeq against another non-targeting
-# # guide pairwise
-# nt.guides <- c("sgNegCtrl_3", 
-#                "sgNegCtrl_2|sgNegCtrl_2", 
-#                "sgNegCtrl_1|sgNegCtrl_1")
-# perturbations <- nt.guides
-# for (cell.type in DESIRED.CELL.TYPES) {
-#   data.cell.type <- subset(data, scMRMA_manual == cell.type)
-#   output.dir <- sprintf("%s/%s/%s", OUTPUT.DIR, "sgRNA_full", "non-targeting")
-#   print(sprintf("Outputting %s sgRNA_gene deseq into %s", cell.type, output.dir))
-#   found = FALSE
-#   for (perturb in perturbations) {
-#     for (nt.guide in nt.guides) {
-#       print(sprintf("Comparing %s and %s", perturb, nt.guide))
-#       if (perturb == nt.guide) {
-#         next
-#       }
-#       tryCatch({
-#         df.deseq <- find.deseq.differential.genes(
-#           data.cell.type,
-#           SEED,
-#           perturb,
-#           nt.guide,
-#           group.column = "sgRNA_full"
-#         )
-#         found = TRUE
-#       }, error = function(err) {
-#         print(sprintf("Failed to get model because of %s in %s", err, perturb))
-#       })
-#       if (found) {
-#         write.table(df.deseq, sprintf("%s/%s_%s_%s.csv",
-#                                       output.dir,
-#                                       cell.type,
-#                                       perturb,
-#                                       nt.guide))
-#       }
-#     }
-#   }
-# }
-
-print("Finished running")
