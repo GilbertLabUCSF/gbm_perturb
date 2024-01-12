@@ -33,12 +33,12 @@ library(dplyr)
 ##############################################################################
 # Inputs:
 
-PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GBM43_1_malignant_only_annotated_20230817.Rds"
+PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_integrated_20230619.Rds"
 SORTED_IDENTITIES = c("FACS")
 SORTED_IDENTITES_ONLY = TRUE
 NT_GUIDES = c("non-targeting")
 IGNORE_GUIDES = c("")
-OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gbm43_clean_outputs/deseq/noRTNormalized"
+OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/condNormalized_invitro"
 SEED = 5220
 NORMALIZE_TO_NT_NORT = TRUE
 MINIMUM_COVERAGE = 5

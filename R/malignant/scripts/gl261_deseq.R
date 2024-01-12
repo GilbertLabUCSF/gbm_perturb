@@ -33,15 +33,15 @@ library(dplyr)
 ##############################################################################
 # Inputs:
 
-PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/downsampled_objects/GL261_integrated_downsampled_sameRTnoRT.rds"
-EXP_CONTEXT = "invitro"
+PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_integrated_20230619.Rds"
+EXP_CONTEXT = "CED"
 SORTED_IDENTITIES = c("MACSFACS")
 SORTED_IDENTITES_ONLY = FALSE
 NT_GUIDES = c("non-targeting")
 IGNORE_GUIDES = c("NA_RT", "NA_noRT", "non-targeting_B_RT", "non-targeting_B_noRT")
-OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20231130_invitro_noRTNormalized_RTnoRTDownsampled_all"
+OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/condNormalized_CED"
 SEED = 5220
-NORMALIZE_TO_NT_NORT = TRUE
+NORMALIZE_TO_NT_NORT = FALSE
 MINIMUM_COVERAGE = 5
 
 print(paste("PATH_TO_SEURAT_OBJECT =", PATH_TO_SEURAT_OBJECT))
@@ -126,30 +126,30 @@ build_filename = function(group1, group2) {
 
 # Find differential genes, starting with the non-targeting case(s)
 
-for (guide in NT_GUIDES) {
-  RT = paste(guide, "RT", sep = "_")
-  noRT = paste(guide, "noRT", sep = "_")
-  found = FALSE
-  tryCatch({
-    df.nt = find_deseq_differential_genes(data.context, SEED, RT, 
-                                          noRT, group_column = "sgRNACond")
-    found = TRUE
-  }, error = function(err) {
-    print(paste("Failed to get model because of ", err, "in", guide))
-  })
-  if (found) {
-    write.table(df.nt, build_filename(RT, noRT))
-  }
-}
+# for (guide in NT_GUIDES) {
+#   RT = paste(guide, "RT", sep = "_")
+#   noRT = paste(guide, "noRT", sep = "_")
+#   found = FALSE
+#   tryCatch({
+#     df.nt = find_deseq_differential_genes(data.context, SEED, RT, 
+#                                           noRT, group_column = "sgRNACond")
+#     found = TRUE
+#   }, error = function(err) {
+#     print(paste("Failed to get model because of ", err, "in", guide))
+#   })
+#   if (found) {
+#     write.table(df.nt, build_filename(RT, noRT))
+#   }
+# }
 
 # If there are multiple non-targeting perturbations, combine them into a single
 # non-targeting perturbation and analyze that.
-for (guide in NT_GUIDES) {
-  data.context$sgRNACond = gsub(guide, "non-targeting", data.context$sgRNACond)
-}
-df.nt_combined = find_deseq_differential_genes(data.context, SEED, "non-targeting_RT",
-                                               "non-targeting_noRT", group_column = "sgRNACond")
-write.table(df.nt_combined, build_filename("non-targeting_RT", "non-targeting_noRT"))
+# for (guide in NT_GUIDES) {
+#   data.context$sgRNACond = gsub(guide, "non-targeting", data.context$sgRNACond)
+# }
+# df.nt_combined = find_deseq_differential_genes(data.context, SEED, "non-targeting_RT",
+#                                                "non-targeting_noRT", group_column = "sgRNACond")
+# write.table(df.nt_combined, build_filename("non-targeting_RT", "non-targeting_noRT"))
 
 for (perturb in perturbations.context) {
   print(sprintf("Calculating diff genes for %s", perturb))
