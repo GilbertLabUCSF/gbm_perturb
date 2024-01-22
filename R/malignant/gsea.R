@@ -22,8 +22,8 @@
 # - Table of genes that fail to convert to ENSEMBL
 # - An R object that contains GSEA results for each perturbation x radiation
 #   combination
-# - Heatmap of enrichment scores
-# - Bubble plot of enrichment scores
+# - Heatmap of normalized enrichment scores
+# - Bubble plot of normalized enrichment scores
 # - Counts of pathways in perturbations and perturbations in pathways
 
 ## -----------------------------------------------------------------------------------------------------------------------------------------------
@@ -50,7 +50,7 @@ library(RColorBrewer)
 library(reactome.db)
 library(annotables)
 library(biomaRt)
-set.seed(0)
+set.seed(5220)
 
 
 ## -----------------------------------------------------------------------------------------------------------------------------------------------

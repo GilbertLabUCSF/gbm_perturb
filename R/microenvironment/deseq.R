@@ -2,8 +2,12 @@
 # 
 # This script takes in an example Seurat object called microenvironment_data.rds 
 # and outputs DESeq data for cells that are labeled with metadata scMRMA_manual
-# %in% DESIRED.CELL.TYPES. Note that this script shows how we used
-# only sgNegCtrl_3 and relabels oligodendrocyte progenitor cells as OPCs.
+# %in% DESIRED.CELL.TYPES
+#
+# In an attempt to provide the greatest possible degree of transparency and to
+# fit with the preprocessing scripts provided, this code retains a significant 
+# number of data wrangling steps, such as using sgNegCtrl_3 and relabeling
+# oligodendrocyte progenitor cells as OPCs
 # 
 # Inputs:
 # - The input Seurat object, which should have scMRMA_manual, sgRNA_full, and
