@@ -33,7 +33,7 @@ library(dplyr)
 ##############################################################################
 # Inputs:
 
-PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_integrated_20230619.Rds"
+PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/downsampled_objects/GL261_integrated_downsampled_sameRTNoRT.rds"
 SORTED_IDENTITIES = c("FACS")
 SORTED_IDENTITES_ONLY = TRUE
 NT_GUIDES = c("non-targeting")

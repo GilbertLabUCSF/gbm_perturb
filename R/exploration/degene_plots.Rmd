@@ -31,10 +31,10 @@ Import the differential expression data from a condition of choice
 
 ```{r}
 CONTEXT <- "invitro"
-NORMALIZATION <- "noRTNormalized"
-OUTPUT_DIR <- sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/downsampled_gene_plots/%s/%s", NORMALIZATION, CONTEXT)
-INPUT_DIRS <- c(
-  "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/GL261_integrated_20231130_invitro_noRTNormalized_RTnoRTDownsampled_all"
+NORMALIZATION <- "condNormalized"
+OUTPUT_DIR <- sprintf("/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/de_genes/downsampled_gene_plots_condNormalized/%s", CONTEXT)
+INPUT_DIRS <- sprintf(
+  "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/condNormalized_%s_downsampled", CONTEXT
 )
 data.list <- list()
 for (dir in INPUT_DIRS) {
@@ -59,6 +59,7 @@ Along with expression filters (genes must have a valid log_fc, p-value, and p-ad
 RT.df <- data.frame()
 noRT.df <- data.frame()
 names(data.list) <- gsub("_non-targeting_noRT", "", names(data.list))
+names(data.list) <- gsub("_non-targeting_RT", "", names(data.list))
 for (name in names(data.list)) {
   name.df <- data.list[[name]]
   name.df = name.df[!is.na(name.df$log_fc), ]

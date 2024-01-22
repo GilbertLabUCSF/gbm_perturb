@@ -23,7 +23,7 @@
 
 ##############################################################################
 ##############################################################################
-# Dependencies:
+# Dependemoncies:
 
 library(Seurat)
 library(DElegate)
@@ -33,13 +33,13 @@ library(dplyr)
 ##############################################################################
 # Inputs:
 
-PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_integrated_20230619.Rds"
-EXP_CONTEXT = "CED"
+PATH_TO_SEURAT_OBJECT = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/downsampled_objects/GL261_integrated_downsampled_sameRTnoRT.rds"
+EXP_CONTEXT = "preinf"
 SORTED_IDENTITIES = c("MACSFACS")
-SORTED_IDENTITES_ONLY = FALSE
+SORTED_IDENTITES_ONLY = TRUE
 NT_GUIDES = c("non-targeting")
 IGNORE_GUIDES = c("NA_RT", "NA_noRT", "non-targeting_B_RT", "non-targeting_B_noRT")
-OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/condNormalized_CED"
+OUTPUT_DIR = "/raleighlab/data1/czou/gbm_perturb/gbm_perturb_gl261_clean_outputs/deseq/condNormalized_preinf_downsampled"
 SEED = 5220
 NORMALIZE_TO_NT_NORT = FALSE
 MINIMUM_COVERAGE = 5
