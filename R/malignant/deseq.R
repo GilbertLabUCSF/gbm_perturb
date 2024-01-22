@@ -1,9 +1,13 @@
 # GL261 DESeq
 # 
 # This script takes in an example Seurat object called gl261_data.rds and 
-# outputs DESeq data for cells marked with source == "invitro" 
+# outputs DESeq data for cells marked with metadata source == "invitro" 
 # into a directory called invitro_deseq_directory. Other experimental contexts 
 # were similarly run. This is an example of running DESeq on GL261 data.
+# 
+# In an attempt to provide the greatest possible degree of transparency and to
+# fit with the preprocessing scripts provided, this code retains a significant 
+# number of data wrangling steps.
 # 
 # Inputs:
 # - The input Seurat object, which should have source, sorted, cond and 
@@ -15,7 +19,8 @@
 # - Guides to ignore
 # - The output directory
 # - A random seed
-# - Whether we normalize to non-targeting noRT or normalize to the condition
+# - Whether we normalize to non-targeting noRT or normalize to the condition.
+#   In the manuscript, this is described as "noRTNormalized" or "condNormalized."
 # - The bottom coverage threshold. We only consider cells with coverage above
 #   this.
 # 

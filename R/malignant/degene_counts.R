@@ -1,14 +1,18 @@
-# GL261 DE gene counting
+# GL261 DE gene counts
 # 
 # This script contains code for counting the number of differentially expressed 
 # genes for GL261 DESeq output stored in a directory called 
 # data/malignant/deseq/invitro.
+#
+# In an attempt to provide the greatest possible degree of transparency and to
+# fit with the DESeq2 example provided, this code retains a significant 
+# number of data wrangling steps.
 # 
 # Inputs:
 # - DESeq output directory containing a CSV file per perturbation
 # 
 # Outputs: 
-# - Counts and plots of DE genes per perturbation separated by radiation 
+# - A table and plots of DE genes per perturbation separated by radiation 
 #   condition
 
 ## -----------------------------------------------------------------------------------------------------------------------------------------------

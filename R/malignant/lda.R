@@ -5,6 +5,10 @@
 # show example anaylsis of cells whose `source == 'invitro'`, representing 
 # the *in vitro* cells in our datasets.
 # 
+# In an attempt to provide the greatest possible degree of transparency and to
+# fit with the preprocessing scripts provided, this code retains a significant 
+# number of data wrangling steps.
+# 
 # Inputs:
 # - A Seurat object that contains cells with source, cond and sgRNACond metadata
 # 
