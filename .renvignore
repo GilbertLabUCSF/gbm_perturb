@@ -1,0 +1,14 @@
+library/
+local/
+cellar/
+lock/
+sandbox/
+staging/
+renv/
+data/
+*.RData
+*.Rhistory
+*.out
+.ipynb_checkpoints/
+.Rproj.user
+output/
