@@ -1,74 +1,60 @@
 # GBM-Perturb
 
-This repository contains anlaysis in Python and R for the output of _in vivo_ perturb-seq
-experiments. 
+This repository contains analysis in Python and R for the output of _in vivo_ perturb-seq
+experiments as described in [Liu et al, bioRxiv 2023](https://www.biorxiv.org/content/10.1101/2023.09.01.555831v3.full).
 
-## Setup
+## Getting set up
 
+### Installing dependencies
+First, you'll want to install dependencies. Python and R dependencies are managed separately.
 
-Here's he directory structure:
+#### R
+Dependencies are managed as an R project through [`renv`](https://rstudio.github.io/renv/articles/renv.html). Activate the project by installing `renv` and running:
+```
+renv::init()
+renv::restore()
+```
+in the top-level project directory. This will install dependencies as specified in `renv.lock`.
+
+#### Python
+This repository uses Poetry for Python dependency management. [Install poetry](https://python-poetry.org/docs/), navigate to the
+project directory, and run `poetry install`. This will install all packages according to the versions specified in `poetry.lock`.
+
+### Directories
+Next, you'll want to create a top-level `output` directory and a top-level `data` directory. The code in this repository assumes that
+these directories (and sometimes subdirectories) exist. `output` generally contains output plots and data, while `data` contains
+input metadata and raw data. We have chosen to leave most of our existing directory structure following these `data` and `output`
+directories intact as examples; there's user flexibility on where things go.
+
+## Navigating the repository
+Here is the directory structure as used by us as developers:
 ```
 .
-├── cinema_ot/
-│   └── requirements.txt
-└── deseq_gsea_lda/
-    ├── R/
-    │   ├── malignant/
-    │   └── microenvironment/
-    ├── example_data/
-    │   ├── malignant/
-    │   └── microenvironment/
-    ├── .Rprofile
-    └── renv.lock
+├── R
+│   ├── malignant
+│   ├── microenvironment
+│   ├── revisions
+│   └── utils
+├── README.md
+├── data
+├── genome-biology-methods.Rproj
+├── output
+├── poetry.lock
+├── pyproject.toml
+├── python
+│   ├── chromatin_analysis.ipynb
+│   ├── doubles_coefficient_analysis.ipynb
+│   └── gl261_cinemaot.ipynb
+├── renv.lock
+├── shared_data
+│   └── deseq_output
+└── shell
 ```
-For dependency independence, the Python and R components are separated. Specifically, `cinema_ot`, for example,
-contains Python code for CINEMA-OT analysis. The remaining analysis is in the `deseq_gsea_lda` directory
-as is written in R.
-
-## Setup
-
-### `deseq_gsea_lda`
-
-We use [`renv`](https://rstudio.github.io/renv/articles/renv.html) 
-to manage dependencies and install libraries. Note, however, that `renv` is not 
-always able to manage packages that have not been released to CRAN, 
-Bioconductor, or other distribution platforms. `renv` also cannot manage non-R
-packages, as it is run from within R. If you're working from RStudio, you may
-need to modify your package discovery paths to include the path to `renv`'s
-library of packages.
-
-To get set up, first ensure that your working directory is the `deseq_gsea_lda` directory.
-
-Then, install renv if you don't have it installed already:
-```install.packages("renv")```
-
-Next, initialize renv:
-```renv::init()```
-
-Restore the project dependencies from the `renv.lock` file:
-```renv::restore()```
-
-### `cinema_ot`
-
-`requirements.txt` contains a dump of all the dependencies you might possibly need to run
-the Jupyter notebook in `cinema_ot`. If you have pip, the easiest way to install them is 
-to run the following command from the `cinema_ot` directory:
-```
-pip install -r requirements.txt
-```
-
-### Installing new packages
-
-The `renv.lock` file is a snapshot of our R dependency world. When you add
-additional dependencies, be sure to update it using the following command:
-```renv::snapshot()```
-
-If at any time you would like to return to the current state of `renv.lock`,
-you can call the `renv::restore()` method from above.
+- `R` contains R code
+- `python` contains Python code
+- `shell` contains shell scripts for CUT&TAG analysis
+- `shared_data/deseq_output` contains comprehensive DESeq2 outputs for our perturb-seq data relative to non-targeting same treatment condition controls. This data was generated
+using the R [`DElegate`](https://github.com/cancerbits/DElegate) package.
 
 ## Maintenance
-
-Code here was authored by Christopher Zou, Ashir Borah, and John
-Liu. It is in a pretty scientifically useful, but pretty low standard
-from a software engineering perspective state. Please feel free to fork or 
-make PRs as you see fit in order to make things easier to work with!
+Authored by Christopher Zou, Ashir Borah, and John Liu. Feel free to fork/ping us through issues for questions. 
