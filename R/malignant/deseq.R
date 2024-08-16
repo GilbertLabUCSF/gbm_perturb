@@ -43,7 +43,7 @@ SORTED_IDENTITIES = c("MACSFACS")
 SORTED_IDENTITES_ONLY = FALSE
 NT_GUIDES = c("non-targeting")
 IGNORE_GUIDES = c("NA_RT", "NA_noRT", "non-targeting_B_RT", "non-targeting_B_noRT")
-OUTPUT_DIR = "data/malignant/deseq/invitro"
+OUTPUT_DIR = "output/malignant/deseq/invitro"
 SEED = 5220
 NORMALIZE_TO_NT_NORT = TRUE
 COVERAGE_FLOOR = 5
@@ -176,5 +176,3 @@ for (perturb in perturbations.context) {
 }
 
 print("Finished running!")
-
-## -----------------------------------------------------------------------------------------------------------------------------------------------

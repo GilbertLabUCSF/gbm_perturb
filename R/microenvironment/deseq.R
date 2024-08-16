@@ -29,7 +29,7 @@ library(dplyr)
 # Inputs:
 
 PATH.TO.SEURAT.OBJECT = "microenvironment_data.rds"
-OUTPUT.DIR = "data/microenvironment/deseq"
+OUTPUT.DIR = "output/microenvironment/deseq"
 SEED = 5220
 DESIRED.CELL.TYPES = c("Oligodendrocytes", "Astrocytes",
                        "Microglia", "Macrophages", "OPCs")
@@ -69,7 +69,7 @@ data$scMRMA_manual <- gsub("Oligodendrocyte progenitor cells", "OPCs", data$scMR
 
 # Keep only the cells that have guides from sgRNA_full we want to keep
 data$guide.cell <- paste(data$sgRNA_full, data$scMRMA_manual, sep = "_")
-knockouts <- read.table("/raleighlab/data1/czou/gbm_perturb/gbm_perturb/R/microenvironment/pdx_micro_sb28_3_pseudobulk_KD_greaterthan_030.txt",
+knockouts <- read.table("data/microenvironment/pdx_micro_sb28_3_pseudobulk_KD_greaterthan_030.txt",
                         sep = ",")
 colnames(knockouts) <- c("guide", "cell_type")
 guide.cells.to.keep <- paste(knockouts$guide, knockouts$cell_type, sep = "_")

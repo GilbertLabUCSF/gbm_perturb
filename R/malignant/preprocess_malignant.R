@@ -11,13 +11,13 @@ library(ggpubr)
 
 
 # load all GL261  data
-smpid <- dir(file.path("/raleighlab/data1/liuj/gbm_perturb/cellranger_out_XFP/invivo_perturb_GL261_integrate"))
+smpid <- dir(file.path("data/cellranger_out_XFP/invivo_perturb_GL261_integrate"))
 
 dataGene.list <- list()
 sgR.list <- list()
 
 for (i in 1:length(smpid)){
-  df <- Read10X(data.dir = paste("/raleighlab/data1/liuj/gbm_perturb/cellranger_out_XFP/invivo_perturb_GL261_integrate/",smpid[i],"/outs/filtered_feature_bc_matrix/",sep=''))
+  df <- Read10X(data.dir = paste("data/cellranger_out_XFP/invivo_perturb_GL261_integrate/",smpid[i],"/outs/filtered_feature_bc_matrix/",sep=''))
   dataGene.list[[i]] <- CreateSeuratObject(counts=df$`Gene Expression`, project = smpid[i])
   sgR.list[[i]] <- CreateSeuratObject(counts = df$`CRISPR Guide Capture`, project = smpid[i])
   dataGene.list[[i]]$orig.ident <- smpid[i]
@@ -169,8 +169,8 @@ seqMetrics.list <- list()
 sgRNATbl.list <- list()
 
 for (i in 1:length(smpid)){
-  seqMetrics.list[[i]] <- read.table(paste("/raleighlab/data1/liuj/gbm_perturb/cellranger_out_XFP/invivo_perturb_GL261_integrate/",smpid[i],"/outs/metrics_summary.csv",sep=''),sep=',',header=TRUE)
-  sgRNA_tags <- read.table(paste("/raleighlab/data1/liuj/gbm_perturb/cellranger_out_XFP/invivo_perturb_GL261_integrate/",smpid[i],"/outs/crispr_analysis/protospacer_calls_per_cell.csv",sep=''),sep=',',header=TRUE)
+  seqMetrics.list[[i]] <- read.table(paste("data/cellranger_out_XFP/invivo_perturb_GL261_integrate/",smpid[i],"/outs/metrics_summary.csv",sep=''),sep=',',header=TRUE)
+  sgRNA_tags <- read.table(paste("data/cellranger_out_XFP/invivo_perturb_GL261_integrate/",smpid[i],"/outs/crispr_analysis/protospacer_calls_per_cell.csv",sep=''),sep=',',header=TRUE)
   sgRNA_tags$cell_barcode <- gsub("-1","",sgRNA_tags$cell_barcode)
   row.names(sgRNA_tags) <- as.character(sgRNA_tags$cell_barcode)
   sgRNATbl.list[[i]] <- sgRNA_tags

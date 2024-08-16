@@ -38,9 +38,9 @@ library(RColorBrewer)
 # Import the differential expression data from a condition of choice:
 
 CONTEXT <- "invitro"
-OUTPUT_DIR <- sprintf("data/malignant/de_genes/%s", NORMALIZATION, CONTEXT)
+OUTPUT_DIR <- sprintf("output/malignant/de_genes/%s", NORMALIZATION, CONTEXT)
 INPUT_DIRS <- c(
-  sprintf("data/malignant/deseq/%s", CONTEXT)
+  sprintf("output/malignant/deseq/%s", CONTEXT)
 )
 data.list <- list()
 for (dir in INPUT_DIRS) {
@@ -123,6 +123,3 @@ degenes.plot <- ggplot(all.df, aes(x = perturb)) +
         legend.key = element_blank())
 ggsave(paste(OUTPUT_DIR, "de_genes_bubble_plot.pdf", sep = "/"),
        degenes.plot, height = 3.5, width = 10, device = pdf)
-
-
-## -----------------------------------------------------------------------------------------------------------------------------------------------

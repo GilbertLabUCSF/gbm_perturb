@@ -58,8 +58,8 @@ set.seed(5220)
 
 CONTEXT <- "invitro"
 CONDITION <- "Combined"
-INPUT_DIRS <- c(sprintf("data/malignant/deseq/%s", CONTEXT))
-OUTPUT_DIR <- sprintf("data/malignant/gsea/%s/%s", CONTEXT, CONDITION)
+INPUT_DIRS <- c(sprintf("output/malignant/deseq/%s", CONTEXT))
+OUTPUT_DIR <- sprintf("output/malignant/gsea/%s/%s", CONTEXT, CONDITION)
 
 
 ## -----------------------------------------------------------------------------------------------------------------------------------------------
@@ -261,13 +261,13 @@ unique_perturbations <- unique(gsub("_noRT", "", unique_perturbations))
 unique_perturbations <- unique(gsub("_RT", "", unique_perturbations))
 
 # Add in GO fill bar
-go_categories_RT = read.table("/raleighlab/data1/liuj/gbm_perturb/analysis/features_48h_GL261_annot2.csv", sep = ",")
+go_categories_RT = read.table("data/gbm_perturb/analysis/features_48h_GL261_annot2.csv", sep = ",")
 colnames(go_categories_RT) = c("Gene", "GO")
 rownames(go_categories_RT) = go_categories_RT$Gene
 rownames(go_categories_RT) <- paste(CONTEXT, rownames(go_categories_RT), "RT", sep = "_")
 rownames(go_categories_RT) <- gsub("NTC", "non-targeting", rownames(go_categories_RT))
 
-go_categories_noRT = read.table("/raleighlab/data1/liuj/gbm_perturb/analysis/features_48h_GL261_annot2.csv", sep = ",")
+go_categories_noRT = read.table("data/gbm_perturb/analysis/features_48h_GL261_annot2.csv", sep = ",")
 colnames(go_categories_noRT) = c("Gene", "GO")
 rownames(go_categories_noRT) = go_categories_noRT$Gene
 rownames(go_categories_noRT) <- paste(CONTEXT, rownames(go_categories_noRT), "noRT", sep = "_")
@@ -307,8 +307,8 @@ term.color.map <- list(
 )
 
 # Add in screening phenotype annotations
-phenoTbl <- read.table("/raleighlab/data1/liuj/gbm_perturb/analysis/GL261_1+2_results_table.txt",sep='\t',header=TRUE,row.names=1)
-coverageTbl <- read.table('/raleighlab/data1/liuj/gbm_perturb/analysis/gbm_pdx_perturb_GL261_integrate_xfp/pdx_perturb_GL261_concordant_sgRNAs.txt',header=TRUE,sep='\t')
+phenoTbl <- read.table("data/gbm_perturb/analysis/GL261_1+2_results_table.txt",sep='\t',header=TRUE,row.names=1)
+coverageTbl <- read.table('data/gbm_perturb/analysis/gbm_pdx_perturb_GL261_integrate_xfp/pdx_perturb_GL261_concordant_sgRNAs.txt',header=TRUE,sep='\t')
 coverageTblCmp <- rbind(invitronoRT = apply(coverageTbl[c("GL261_48hit_noRT_1","GL261_48hit_noRT_2"),],2,sum),
                         invitroRT = apply(coverageTbl[c("GL261_48hit_RT_1","GL261_48hit_RT_2"),],2,sum),
                         preinfnoRT = apply(coverageTbl[c("GL261_noRT_preinf_MACSFACS_1","GL261_noRT_preinf_MACSFACS_2","GL261_noRT_preinf_MACSFACS_3"),],2,sum),

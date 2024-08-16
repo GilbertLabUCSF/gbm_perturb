@@ -49,7 +49,7 @@ library(stringr)
 # Define some constants:
 
 CONTEXT <- "invitro"
-OUTPUT.DIR <- paste("data/malignant/deseq/invitro/lda/%s", CONTEXT, sep = "/")
+OUTPUT.DIR <- paste("output/malignant/deseq/invitro/lda/%s", CONTEXT, sep = "/")
 PATH.TO.SEURAT.OBJECT <- "gl261_data.rds"
 IGNORE.GUIDES <- c("NA_RT", "NA_noRT", "non-targeting_B_RT", "non-targeting_B_noRT")
 COVERAGE.FLOOR <- 5

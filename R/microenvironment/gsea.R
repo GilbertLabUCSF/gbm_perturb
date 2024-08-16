@@ -60,9 +60,9 @@ set.seed(5220)
 ## -----------------------------------------------------------------------------------------------------------------------------------------------
 # Define constants:
 
-INPUT.DIR.BASE <- "data/microenvironment/deseq"
+INPUT.DIR.BASE <- "output/microenvironment/deseq"
 INPUT.DIRS <- list.dirs(INPUT.DIR.BASE)[-1]
-OUTPUT.DIR <- "data/gsea/Combined"
+OUTPUT.DIR <- "output/gsea/Combined"
 
 
 ## -----------------------------------------------------------------------------------------------------------------------------------------------
