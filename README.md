@@ -1,7 +1,12 @@
 # GBM-Perturb
 
 This repository contains anlaysis in Python and R for the output of _in vivo_ perturb-seq
-experiments. Here's he directory structure:
+experiments. 
+
+## Setup
+
+
+Here's he directory structure:
 ```
 .
 ├── cinema_ot/
