@@ -6,11 +6,9 @@ sandbox/
 staging/
 renv/
 data/
-output/
-.ipynb_checkpoints/
-.Rproj.user
-*.DS_Store
 *.RData
 *.Rhistory
 *.out
-*.sqlite
+.ipynb_checkpoints/
+.Rproj.user
+output/
