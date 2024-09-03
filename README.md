@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/654776766.svg)](https://zenodo.org/doi/10.5281/zenodo.13638032)
+
 # GBM-Perturb
 
 This repository contains analysis in Python and R for the output of _in vivo_ perturb-seq
